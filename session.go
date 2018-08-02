@@ -32,8 +32,9 @@ type Session struct {
 }
 
 var (
-	// ErrSessionNotSet is raised when session is tried to access before setting it.
-	ErrSessionNotSet = errors.New("session not set in store, create session before using")
+	// ErrInvalidSession is raised when session is tried to access before setting it or its not set in store.
+	// Handle this and create new session.
+	ErrInvalidSession = errors.New("invalid session")
 	// ErrFieldNotFound is raised when given key is not found in store
 	ErrFieldNotFound = errors.New("session field not found in store")
 	// ErrAssertType is raised when type assertion fails
@@ -46,7 +47,7 @@ var (
 // and validate the session with current store. If cookie not set then it creates
 // new session and calls `SetCookie`` callback. If `DisableAutoSet` is set then it
 // skips new session creation and should be manually done using `Create` method.
-// If a cookie is found but its invalid in store then `ErrSessionNotSet` error is returned.
+// If a cookie is found but its invalid in store then `ErrInvalidSession` error is returned.
 func NewSession(m *Manager, r, w interface{}) (*Session, error) {
 	var (
 		err  error
@@ -89,7 +90,7 @@ func NewSession(m *Manager, r, w interface{}) (*Session, error) {
 	if isValid, err := m.store.IsValid(sess, sess.cookie.Value); err != nil {
 		return nil, err
 	} else if !isValid {
-		return nil, ErrSessionNotSet
+		return nil, ErrInvalidSession
 	}
 
 	// Set isSet flag
@@ -174,7 +175,7 @@ func (s *Session) Load() error {
 func (s *Session) GetAll() (map[string]interface{}, error) {
 	// Check if session is set before accessing it
 	if !s.isSet {
-		return nil, ErrSessionNotSet
+		return nil, ErrInvalidSession
 	}
 
 	return s.manager.store.GetAll(s, s.cookie.Value)
@@ -186,7 +187,7 @@ func (s *Session) GetAll() (map[string]interface{}, error) {
 func (s *Session) Get(key string) (interface{}, error) {
 	// Check if session is set before accessing it
 	if !s.isSet {
-		return nil, ErrSessionNotSet
+		return nil, ErrInvalidSession
 	}
 
 	// Get from current value map if present
@@ -203,7 +204,7 @@ func (s *Session) Get(key string) (interface{}, error) {
 func (s *Session) Set(key string, val interface{}) error {
 	// Check if session is set before accessing it
 	if !s.isSet {
-		return ErrSessionNotSet
+		return ErrInvalidSession
 	}
 
 	return s.manager.store.Set(s, s.cookie.Value, key, val)
@@ -214,7 +215,7 @@ func (s *Session) Set(key string, val interface{}) error {
 func (s *Session) Commit() error {
 	// Check if session is set before accessing it
 	if !s.isSet {
-		return ErrSessionNotSet
+		return ErrInvalidSession
 	}
 
 	return s.manager.store.Commit(s, s.cookie.Value)
@@ -224,7 +225,7 @@ func (s *Session) Commit() error {
 func (s *Session) Clear() error {
 	// Check if session is set before accessing it
 	if !s.isSet {
-		return ErrSessionNotSet
+		return ErrInvalidSession
 	}
 
 	if err := s.manager.store.Clear(s, s.cookie.Value); err != nil {
