@@ -1,0 +1,13 @@
+# Critical
+[x] Redis store
+[x] Helper methods for type assertion
+[ ] Provision in store to call `SetCookie`
+[ ] Tests for session manager
+[ ] Tests for session
+[ ] Tests for in-memory store
+[ ] Tests for Redis store
+[ ] Benchmark comparing gosessions and gorilla
+
+# Optional
+[ ] Secure cookie store with optional encoding and decoding
+[ ] Tests for Secure cookie store
