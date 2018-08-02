@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/garyburd/redigo/redis"
+	"github.com/gomodule/redigo/redis"
 	"github.com/zerodhatech/simplesessions"
 )
 
@@ -29,6 +29,7 @@ type RedisStore struct {
 const (
 	// Default prefix used to store session redis
 	defaultPrefix = "session:"
+	sessionIDLen  = 32
 )
 
 // New creates a new in-memory store instance
@@ -50,15 +51,20 @@ func (s *RedisStore) SetTTL(d time.Duration) {
 	s.ttl = d
 }
 
+// isValidSessionID checks is the given session id is valid.
+func (s *RedisStore) isValidSessionID(sess *simplesessions.Session, id string) bool {
+	return len(id) == sessionIDLen && sess.IsValidRandomString(id)
+}
+
 // IsValid checks if the session is set for the id.
 func (s *RedisStore) IsValid(sess *simplesessions.Session, id string) (bool, error) {
 	// Validate session is valid generate string or not
-	return sess.IsValidRandomString(id), nil
+	return s.isValidSessionID(sess, id), nil
 }
 
 // Create returns a new session id.
 func (s *RedisStore) Create(sess *simplesessions.Session) (string, error) {
-	id, err := sess.GenerateRandomString(32)
+	id, err := sess.GenerateRandomString(sessionIDLen)
 	if err != nil {
 		return "", err
 	}
@@ -68,6 +74,11 @@ func (s *RedisStore) Create(sess *simplesessions.Session) (string, error) {
 
 // Get gets a field in hashmap.
 func (s *RedisStore) Get(sess *simplesessions.Session, id, key string) (interface{}, error) {
+	// Check if valid session
+	if !s.isValidSessionID(sess, id) {
+		return nil, simplesessions.ErrInvalidSession
+	}
+
 	conn := s.pool.Get()
 	defer conn.Close()
 
@@ -81,6 +92,11 @@ func (s *RedisStore) Get(sess *simplesessions.Session, id, key string) (interfac
 
 // GetAll gets all fields from hashmap.
 func (s *RedisStore) GetAll(sess *simplesessions.Session, id string) (map[string]interface{}, error) {
+	// Check if valid session
+	if !s.isValidSessionID(sess, id) {
+		return nil, simplesessions.ErrInvalidSession
+	}
+
 	conn := s.pool.Get()
 	defer conn.Close()
 
@@ -94,6 +110,11 @@ func (s *RedisStore) GetAll(sess *simplesessions.Session, id string) (map[string
 
 // Set sets a value to given session but stored only on commit
 func (s *RedisStore) Set(sess *simplesessions.Session, id, key string, val interface{}) error {
+	// Check if valid session
+	if !s.isValidSessionID(sess, id) {
+		return simplesessions.ErrInvalidSession
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -110,6 +131,11 @@ func (s *RedisStore) Set(sess *simplesessions.Session, id, key string, val inter
 
 // Commit sets all set values
 func (s *RedisStore) Commit(sess *simplesessions.Session, id string) error {
+	// Check if valid session
+	if !s.isValidSessionID(sess, id) {
+		return simplesessions.ErrInvalidSession
+	}
+
 	s.mu.RLock()
 	vals, ok := s.tempSetMap[id]
 	if !ok {
@@ -148,6 +174,11 @@ func (s *RedisStore) Commit(sess *simplesessions.Session, id string) error {
 
 // Clear clears session in redis
 func (s *RedisStore) Clear(sess *simplesessions.Session, id string) error {
+	// Check if valid session
+	if !s.isValidSessionID(sess, id) {
+		return simplesessions.ErrInvalidSession
+	}
+
 	conn := s.pool.Get()
 	defer conn.Close()
 
