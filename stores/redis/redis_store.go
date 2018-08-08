@@ -187,7 +187,7 @@ func (s *RedisStore) Clear(sess *simplesessions.Session, id string) error {
 		return err
 	}
 
-	return sess.WriteCookie("")
+	return nil
 }
 
 // interfaceMap is a helper method which converts HGETALL reply to map of string interface

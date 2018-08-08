@@ -154,6 +154,7 @@ func (s *Session) WriteCookie(cv string) error {
 // clearCookie sets expiry of the cookie to one day before to clear it.
 func (s *Session) clearCookie() error {
 	s.cookie = &http.Cookie{
+		Name:  s.manager.opts.CookieName,
 		Value: "",
 		// Set expiry to previous date to clear it from browser
 		Expires: time.Now().AddDate(0, 0, -1),
