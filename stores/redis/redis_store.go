@@ -100,16 +100,25 @@ func (s *RedisStore) GetMulti(sess *simplesessions.Session, id string, keys ...s
 	conn := s.pool.Get()
 	defer conn.Close()
 
-	// Make list of combined keys
-	cKeys := []string{s.prefix + id}
-	cKeys = append(cKeys, keys...)
+	// Make list of args for HMGET
+	args := make([]interface{}, len(keys)+1)
+	args[0] = s.prefix + id
+	for i := range keys {
+		args[i+1] = keys[i]
+	}
 
-	v, err := s.interfaceMap(conn.Do("HMGET", cKeys))
-	if v == nil || err == redis.ErrNil {
+	v, err := redis.Values(conn.Do("HMGET", args...))
+	if len(v) == 0 || err == redis.ErrNil {
 		return nil, simplesessions.ErrFieldNotFound
 	}
 
-	return v, err
+	// Form a map with returned results
+	res := make(map[string]interface{})
+	for i, k := range keys {
+		res[k] = v[i]
+	}
+
+	return res, err
 }
 
 // GetAll gets all fields from hashmap.
