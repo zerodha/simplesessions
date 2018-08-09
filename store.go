@@ -12,6 +12,9 @@ type Store interface {
 	// Get gets a value for given key from session
 	Get(session *Session, cookieValue, key string) (value interface{}, err error)
 
+	// GetMulti gets a maps of multiple values for given keys
+	GetMulti(session *Session, cookieValue string, keys ...string) (values map[string]interface{}, err error)
+
 	// GetAll gets all key and value from session
 	GetAll(session *Session, cookieValue string) (values map[string]interface{}, err error)
 

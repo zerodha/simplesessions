@@ -182,6 +182,16 @@ func (s *Session) GetAll() (map[string]interface{}, error) {
 	return s.manager.store.GetAll(s, s.cookie.Value)
 }
 
+// GetMulti gets a map of values for multiple session keys.
+func (s *Session) GetMulti(keys ...string) (map[string]interface{}, error) {
+	// Check if session is set before accessing it
+	if !s.isSet {
+		return nil, ErrInvalidSession
+	}
+
+	return s.manager.store.GetMulti(s, s.cookie.Value, keys...)
+}
+
 // Get gets a value for given key in session.
 // If session is already loaded using `Load` then returns values from
 // existing map instead of getting it from store.
