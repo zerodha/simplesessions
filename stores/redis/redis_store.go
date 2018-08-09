@@ -100,12 +100,12 @@ func (s *RedisStore) GetAll(sess *simplesessions.Session, id string) (map[string
 	conn := s.pool.Get()
 	defer conn.Close()
 
-	val, err := s.interfaceMap(conn.Do("HGETALL", s.prefix+id))
-	if err != nil || err == redis.ErrNil {
+	v, err := s.interfaceMap(conn.Do("HGETALL", s.prefix+id))
+	if v == nil || err == redis.ErrNil {
 		return nil, simplesessions.ErrFieldNotFound
 	}
 
-	return val, nil
+	return v, err
 }
 
 // Set sets a value to given session but stored only on commit
