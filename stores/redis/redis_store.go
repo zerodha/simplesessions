@@ -90,6 +90,28 @@ func (s *RedisStore) Get(sess *simplesessions.Session, id, key string) (interfac
 	return v, err
 }
 
+// GetMulti gets a map for values for multiple keys.
+func (s *RedisStore) GetMulti(sess *simplesessions.Session, id string, keys ...string) (map[string]interface{}, error) {
+	// Check if valid session
+	if !s.isValidSessionID(sess, id) {
+		return nil, simplesessions.ErrInvalidSession
+	}
+
+	conn := s.pool.Get()
+	defer conn.Close()
+
+	// Make list of combined keys
+	cKeys := []string{s.prefix + id}
+	cKeys = append(cKeys, keys...)
+
+	v, err := s.interfaceMap(conn.Do("HMGET", cKeys))
+	if v == nil || err == redis.ErrNil {
+		return nil, simplesessions.ErrFieldNotFound
+	}
+
+	return v, err
+}
+
 // GetAll gets all fields from hashmap.
 func (s *RedisStore) GetAll(sess *simplesessions.Session, id string) (map[string]interface{}, error) {
 	// Check if valid session
