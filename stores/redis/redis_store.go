@@ -131,12 +131,7 @@ func (s *RedisStore) GetAll(sess *simplesessions.Session, id string) (map[string
 	conn := s.pool.Get()
 	defer conn.Close()
 
-	v, err := s.interfaceMap(conn.Do("HGETALL", s.prefix+id))
-	if v == nil || err == redis.ErrNil {
-		return nil, simplesessions.ErrFieldNotFound
-	}
-
-	return v, err
+	return s.interfaceMap(conn.Do("HGETALL", s.prefix+id))
 }
 
 // Set sets a value to given session but stored only on commit
@@ -196,11 +191,8 @@ func (s *RedisStore) Commit(sess *simplesessions.Session, id string) error {
 	conn := s.pool.Get()
 	defer conn.Close()
 	_, err := conn.Do("HMSET", args...)
-	if err != nil {
-		return err
-	}
 
-	return sess.WriteCookie(id)
+	return err
 }
 
 // Clear clears session in redis
@@ -214,11 +206,7 @@ func (s *RedisStore) Clear(sess *simplesessions.Session, id string) error {
 	defer conn.Close()
 
 	_, err := conn.Do("DEL", s.prefix+id)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return err
 }
 
 // interfaceMap is a helper method which converts HGETALL reply to map of string interface
