@@ -164,12 +164,18 @@ func (s *Session) clearCookie() error {
 	return s.manager.setCookieCb(s.cookie, s.writer)
 }
 
-// Load loads the session values in memory.
+// LoadValues loads the session values in memory.
 // Get session field tries to get value from memory before hitting store.
-func (s *Session) Load() error {
+func (s *Session) LoadValues() error {
 	var err error
 	s.values, err = s.GetAll()
 	return err
+}
+
+// ResetValues reset the loaded values using `LoadValues` method.ResetValues
+// Subsequent Get, GetAll and GetMulti
+func (s *Session) ResetValues() {
+	s.values = make(map[string]interface{})
 }
 
 // GetAll gets all the fields in the session.
@@ -177,6 +183,11 @@ func (s *Session) GetAll() (map[string]interface{}, error) {
 	// Check if session is set before accessing it
 	if !s.isSet {
 		return nil, ErrInvalidSession
+	}
+
+	// Load value from map if its already loaded
+	if len(s.values) > 0 {
+		return s.values, nil
 	}
 
 	return s.manager.store.GetAll(s, s.cookie.Value)
@@ -187,6 +198,18 @@ func (s *Session) GetMulti(keys ...string) (map[string]interface{}, error) {
 	// Check if session is set before accessing it
 	if !s.isSet {
 		return nil, ErrInvalidSession
+	}
+
+	// Load values from map if its already loaded
+	if len(s.values) > 0 {
+		vals := make(map[string]interface{})
+		for _, k := range keys {
+			if v, ok := s.values[k]; ok {
+				vals[k] = v
+			}
+		}
+
+		return vals, nil
 	}
 
 	return s.manager.store.GetMulti(s, s.cookie.Value, keys...)
@@ -201,9 +224,11 @@ func (s *Session) Get(key string) (interface{}, error) {
 		return nil, ErrInvalidSession
 	}
 
-	// Get from current value map if present
-	if val, ok := s.values[key]; ok {
-		return val, nil
+	// Load value from map if its already loaded
+	if len(s.values) > 0 {
+		if val, ok := s.values[key]; ok {
+			return val, nil
+		}
 	}
 
 	// Get from backend if not found in previous step
