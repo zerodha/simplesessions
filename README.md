@@ -10,19 +10,32 @@ use encoding or just store only primitive data types like `int`, `string` etc.
 # Features
 1. Framework/network library agnostic.
 2. Simple api and supports only primitive data types. Complex types can be stored using own encoding/decoding.
-3. Supports redis and in-memory store (More are getting added).
+3. Supports redis and in-memory store.
 
 # Installation
 Install `simplesessions` and all [available stores](/stores).
+
 ```
 go get github.com/zerodhatech/simplesessions/...
 ```
 
-# Available backends
+# Stores
+Sessions can be connected to any backend like Redis, Postgresql, MySQL etc by implementing [store](/store.go) interface.
+Here is the list of available backend stores.
 
-[in-memory](/stores/memory)
-[redis](/stores/redis)
-secure cookie - in progress
+* [in-memory](/stores/memory)
+* [redis](/stores/redis)
+* Secure cookie - in progress
+
+# Using stores
+Stores can be registered to session manager by using `Use` method.
+
+```go
+sessionManager = simplesessions.New(simplesessions.Options{})
+sessionManager.UseStore(memorystore.New())
+```
+
+Check [examples](/examples) for more details.
 
 # Using with net/http
 
@@ -108,3 +121,6 @@ func main() {
 	sessionManager.RegisterSetCookie(setCookie)
 }
 ```
+
+## License
+Copyright (c) Zerodha Technology Pvt. Ltd. All rights reserved. Licensed under the MIT License.
