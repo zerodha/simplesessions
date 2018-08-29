@@ -50,7 +50,6 @@ func getHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// error
 	fmt.Fprintf(w, "success: %v", val == testValue)
 }
 

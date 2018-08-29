@@ -8,10 +8,10 @@
 [x] In-memory store
 [x] Tests for in-memory store
 [x] Net http example
-[ ] Fasthttp example
+[x] Delete method for deleting individual field in session
+[x] Fasthttp examples
 [ ] Secure cookie store with optional encoding and decoding
 [ ] Tests for Secure cookie store
-[ ] Delete method for deleting individual field in session
 
 # Optional
 [ ] Benchmark comparing gosessions and gorilla
