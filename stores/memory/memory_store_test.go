@@ -240,6 +240,35 @@ func TestCommit(t *testing.T) {
 	assert.Nil(err)
 }
 
+func TestDeleteInvalidSessionError(t *testing.T) {
+	assert := assert.New(t)
+	str := New()
+	sess := &simplesessions.Session{}
+
+	err := str.Delete(sess, "invalidkey", "somekey")
+	assert.Error(err, simplesessions.ErrInvalidSession.Error())
+}
+
+func TestDelete(t *testing.T) {
+	// Test should only set in internal map and not in redis
+	assert := assert.New(t)
+	str := New()
+	sess := &simplesessions.Session{}
+
+	// this key is unique across all tests
+	key := "8dIHy6S2uBuKaNnTUszB2180898ikGY1"
+	field1 := "somefield1"
+	field2 := "somefield2"
+	str.sessions[key] = make(map[string]interface{})
+	str.sessions[key][field1] = 10
+	str.sessions[key][field2] = 10
+
+	err := str.Delete(sess, key, field1)
+	assert.NoError(err)
+	assert.Contains(str.sessions[key], field2)
+	assert.NotContains(str.sessions[key], field1)
+}
+
 func TestClearInvalidSessionError(t *testing.T) {
 	assert := assert.New(t)
 	str := New()

@@ -139,7 +139,28 @@ func (s *MemoryStore) Commit(sess *simplesessions.Session, id string) error {
 	return nil
 }
 
-// Clear clears session in redis
+// Delete deletes a key from session.
+func (s *MemoryStore) Delete(sess *simplesessions.Session, id string, key string) error {
+	// Check if valid session
+	if !s.isValidSessionID(sess, id) {
+		return simplesessions.ErrInvalidSession
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	_, ok := s.sessions[id]
+	if ok && s.sessions[id] != nil {
+		_, ok = s.sessions[id][key]
+		if ok {
+			delete(s.sessions[id], key)
+		}
+	}
+
+	return nil
+}
+
+// Clear clears session in redis.
 func (s *MemoryStore) Clear(sess *simplesessions.Session, id string) error {
 	// Check if valid session
 	if !s.isValidSessionID(sess, id) {

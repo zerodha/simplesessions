@@ -51,6 +51,11 @@ func (s *MockStore) Commit(ss *Session, cv string) error {
 	return s.err
 }
 
+func (s *MockStore) Delete(ss *Session, cv string, key string) error {
+	s.val = nil
+	return s.err
+}
+
 func (s *MockStore) Clear(ss *Session, cv string) error {
 	s.val = nil
 	return s.err

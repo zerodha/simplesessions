@@ -348,6 +348,44 @@ func TestCommit(t *testing.T) {
 	assert.Equal(2*2, len(vals))
 }
 
+func TestDeleteInvalidSessionError(t *testing.T) {
+	assert := assert.New(t)
+	str := New(getRedisPool())
+	sess := &simplesessions.Session{}
+
+	err := str.Delete(sess, "invalidkey", "somefield")
+	assert.Error(err, simplesessions.ErrInvalidSession.Error())
+}
+
+func TestDelete(t *testing.T) {
+	// Test should only set in internal map and not in redis
+	assert := assert.New(t)
+	redisPool := getRedisPool()
+	str := New(redisPool)
+	sess := &simplesessions.Session{}
+
+	// this key is unique across all tests
+	key := "8dIHy6S2uBuKaNnTUszB2180898ikGY1"
+	field1 := "somekey"
+	value1 := 100
+	field2 := "someotherkey"
+	value2 := "abc123"
+
+	conn := redisPool.Get()
+	defer conn.Close()
+	_, err := conn.Do("HMSET", defaultPrefix+key, field1, value1, field2, value2)
+	assert.NoError(err)
+
+	err = str.Delete(sess, key, field1)
+	assert.NoError(err)
+
+	val, err := redis.Bool(conn.Do("HEXISTS", defaultPrefix+key, field1))
+	assert.False(val)
+
+	val, err = redis.Bool(conn.Do("HEXISTS", defaultPrefix+key, field2))
+	assert.True(val)
+}
+
 func TestClearInvalidSessionError(t *testing.T) {
 	assert := assert.New(t)
 	str := New(getRedisPool())

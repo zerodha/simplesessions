@@ -196,7 +196,21 @@ func (s *RedisStore) Commit(sess *simplesessions.Session, id string) error {
 	return err
 }
 
-// Clear clears session in redis
+// Delete deletes a key from redis session hashmap.
+func (s *RedisStore) Delete(sess *simplesessions.Session, id string, key string) error {
+	// Check if valid session
+	if !s.isValidSessionID(sess, id) {
+		return simplesessions.ErrInvalidSession
+	}
+
+	conn := s.pool.Get()
+	defer conn.Close()
+
+	_, err := conn.Do("HDEL", s.prefix+id, key)
+	return err
+}
+
+// Clear clears session in redis.
 func (s *RedisStore) Clear(sess *simplesessions.Session, id string) error {
 	// Check if valid session
 	if !s.isValidSessionID(sess, id) {

@@ -257,6 +257,16 @@ func (s *Session) Commit() error {
 	return s.manager.store.Commit(s, s.cookie.Value)
 }
 
+// Delete deletes a field from session.
+func (s *Session) Delete(key string) error {
+	// Check if session is set before accessing it
+	if !s.isSet {
+		return ErrInvalidSession
+	}
+
+	return s.manager.store.Delete(s, s.cookie.Value, key)
+}
+
 // Clear clears session data from store and clears the cookie
 func (s *Session) Clear() error {
 	// Check if session is set before accessing it

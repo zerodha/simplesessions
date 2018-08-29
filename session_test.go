@@ -624,6 +624,27 @@ func TestSessionCommitInvalidSession(t *testing.T) {
 	assert.Error(err, ErrInvalidSession.Error())
 }
 
+func TestSessionDelete(t *testing.T) {
+	assert := assert.New(t)
+	mockStore := newMockStore()
+	mockManager := newMockManager(mockStore)
+	mockStore.isValid = true
+	mockStore.val = 100
+
+	sess, err := NewSession(mockManager, nil, nil)
+	assert.NoError(err)
+	assert.Equal(mockStore.val, 100)
+
+	err = sess.Delete("somekey")
+	assert.NoError(err)
+	assert.Nil(mockStore.val)
+
+	testError := errors.New("this is test error")
+	mockStore.err = testError
+	err = sess.Delete("somekey")
+	assert.Error(err, testError.Error())
+}
+
 func TestSessionClear(t *testing.T) {
 	assert := assert.New(t)
 	mockStore := newMockStore()
