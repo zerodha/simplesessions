@@ -1,13 +1,17 @@
 # Critical
 [x] Redis store
 [x] Helper methods for type assertion
-[ ] Provision in store to call `SetCookie`
-[ ] Tests for session manager
-[ ] Tests for session
-[ ] Tests for in-memory store
-[ ] Tests for Redis store
-[ ] Benchmark comparing gosessions and gorilla
-
-# Optional
+[x] Provision in store to call `SetCookie`
+[x] Tests for session manager
+[x] Tests for session
+[x] Tests for Redis store
+[x] In-memory store
+[x] Tests for in-memory store
+[x] Net http example
+[ ] Fasthttp example
 [ ] Secure cookie store with optional encoding and decoding
 [ ] Tests for Secure cookie store
+[ ] Delete method for deleting individual field in session
+
+# Optional
+[ ] Benchmark comparing gosessions and gorilla
