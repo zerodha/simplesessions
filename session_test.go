@@ -350,11 +350,9 @@ func TestSessionClearCookie(t *testing.T) {
 	mockStore.isValid = true
 
 	var receivedCookie *http.Cookie
-	var receivedWriter interface{}
 	var isCallbackTriggered bool
 	mockManager.RegisterSetCookie(func(cookie *http.Cookie, w interface{}) error {
 		receivedCookie = cookie
-		receivedWriter = w
 		isCallbackTriggered = true
 		return nil
 	})
