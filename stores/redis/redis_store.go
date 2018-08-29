@@ -62,7 +62,7 @@ func (s *RedisStore) IsValid(sess *simplesessions.Session, id string) (bool, err
 	return s.isValidSessionID(sess, id), nil
 }
 
-// Create returns a new session id.
+// Create returns a new session id but doesn't stores it in redis since empty hashmap can't be created.
 func (s *RedisStore) Create(sess *simplesessions.Session) (string, error) {
 	id, err := sess.GenerateRandomString(sessionIDLen)
 	if err != nil {
@@ -72,7 +72,7 @@ func (s *RedisStore) Create(sess *simplesessions.Session) (string, error) {
 	return id, err
 }
 
-// Get gets a field in hashmap.
+// Get gets a field in hashmap. If field is nill then ErrFieldNotFound is raised
 func (s *RedisStore) Get(sess *simplesessions.Session, id, key string) (interface{}, error) {
 	// Check if valid session
 	if !s.isValidSessionID(sess, id) {
@@ -90,7 +90,7 @@ func (s *RedisStore) Get(sess *simplesessions.Session, id, key string) (interfac
 	return v, err
 }
 
-// GetMulti gets a map for values for multiple keys.
+// GetMulti gets a map for values for multiple keys. If key is not found then its set as nil.
 func (s *RedisStore) GetMulti(sess *simplesessions.Session, id string, keys ...string) (map[string]interface{}, error) {
 	// Check if valid session
 	if !s.isValidSessionID(sess, id) {
@@ -108,8 +108,9 @@ func (s *RedisStore) GetMulti(sess *simplesessions.Session, id string, keys ...s
 	}
 
 	v, err := redis.Values(conn.Do("HMGET", args...))
+	// If field is not found then return map with fields as nil
 	if len(v) == 0 || err == redis.ErrNil {
-		return nil, simplesessions.ErrFieldNotFound
+		v = make([]interface{}, len(keys))
 	}
 
 	// Form a map with returned results

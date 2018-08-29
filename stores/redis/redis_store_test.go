@@ -167,15 +167,14 @@ func TestGetMultiInvalidSessionError(t *testing.T) {
 	assert.Error(err, simplesessions.ErrInvalidSession.Error())
 }
 
-func TestGetMultiFieldNotFoundError(t *testing.T) {
+func TestGetMultiFieldEmptySession(t *testing.T) {
 	assert := assert.New(t)
 	str := New(getRedisPool())
 	sess := &simplesessions.Session{}
 
 	key := "11IHy6S2uBuKaNnTUszB218L898ikGY1"
-	val, err := str.GetMulti(sess, key)
-	assert.Nil(val)
-	assert.Error(err, simplesessions.ErrFieldNotFound.Error())
+	_, err := str.GetMulti(sess, key)
+	assert.Nil(err)
 }
 
 func TestGetMulti(t *testing.T) {
