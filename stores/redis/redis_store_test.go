@@ -173,7 +173,8 @@ func TestGetMultiFieldEmptySession(t *testing.T) {
 	sess := &simplesessions.Session{}
 
 	key := "11IHy6S2uBuKaNnTUszB218L898ikGY1"
-	_, err := str.GetMulti(sess, key)
+	field := "somefield"
+	_, err := str.GetMulti(sess, key, field)
 	assert.Nil(err)
 }
 
