@@ -203,6 +203,11 @@ func (s *RedisStore) Delete(sess *simplesessions.Session, id string, key string)
 		return simplesessions.ErrInvalidSession
 	}
 
+	// Clear temp map for given session id
+	s.mu.Lock()
+	delete(s.tempSetMap, id)
+	s.mu.Unlock()
+
 	conn := s.pool.Get()
 	defer conn.Close()
 
