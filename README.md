@@ -22,7 +22,7 @@ Sessions can be stored to any backend by implementing the [store](/store.go) int
 
 * [in-memory](/stores/memory)
 * [redis](/stores/redis)
-* Secure cookie - in progress
+* [securecookie](/stores/securecookie)
 
 # Usage
 Check the [examples](/examples) directory for complete examples.

@@ -1,4 +1,3 @@
-# Critical
 [x] Redis store
 [x] Helper methods for type assertion
 [x] Provision in store to call `SetCookie`
@@ -10,8 +9,6 @@
 [x] Net http example
 [x] Delete method for deleting individual field in session
 [x] Fasthttp examples
-[ ] Secure cookie store with optional encoding and decoding
-[ ] Tests for Secure cookie store
-
-# Optional
-[ ] Benchmark comparing gosessions and gorilla
+[x] Secure cookie store with optional encoding and decoding
+[x] Tests for Secure cookie store
+[ ] Benchmark comparing with gosessions, gorilla sessions and scs
