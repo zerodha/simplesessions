@@ -131,8 +131,8 @@ func (s *SecureCookieStore) Commit(sess *simplesessions.Session, cv string) erro
 	}
 
 	s.mu.RLock()
-	s.mu.RUnlock()
 	tempVals, ok := s.tempSetMap[cv]
+	s.mu.RUnlock()
 	if !ok {
 		// Nothing to commit
 		return nil
