@@ -14,7 +14,8 @@ Most session libraries are highly opinionated and hard-wired to work with `net/h
 Install `simplesessions` and all [available stores](/stores).
 
 ```
-go get github.com/vividvilla/simplesessions/...
+go get -u github.com/vividvilla/simplesessions
+go get -u github.com/vividvilla/simplesessions/stores/...
 ```
 
 # Stores
