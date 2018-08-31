@@ -4,7 +4,7 @@ import (
 	"sync"
 
 	"github.com/gorilla/securecookie"
-	"github.com/zerodhatech/simplesessions"
+	"github.com/vividvilla/simplesessions"
 )
 
 const (

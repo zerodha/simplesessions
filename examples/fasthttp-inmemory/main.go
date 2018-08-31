@@ -5,8 +5,8 @@ import (
 	"net/http"
 
 	"github.com/valyala/fasthttp"
-	"github.com/zerodhatech/simplesessions"
-	"github.com/zerodhatech/simplesessions/stores/memory"
+	"github.com/vividvilla/simplesessions"
+	"github.com/vividvilla/simplesessions/stores/memory"
 )
 
 var (

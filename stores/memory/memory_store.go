@@ -3,7 +3,7 @@ package memorystore
 import (
 	"sync"
 
-	"github.com/zerodhatech/simplesessions"
+	"github.com/vividvilla/simplesessions"
 )
 
 const (

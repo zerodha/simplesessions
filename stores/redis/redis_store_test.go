@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/zerodhatech/simplesessions"
+	"github.com/vividvilla/simplesessions"
 
 	"github.com/alicebob/miniredis"
 	"github.com/gomodule/redigo/redis"

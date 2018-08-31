@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/gomodule/redigo/redis"
-	"github.com/zerodhatech/simplesessions"
+	"github.com/vividvilla/simplesessions"
 )
 
 // RedisStore represents redis session store for simple sessions.

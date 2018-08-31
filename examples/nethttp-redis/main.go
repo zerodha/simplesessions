@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/gomodule/redigo/redis"
-	"github.com/zerodhatech/simplesessions"
-	"github.com/zerodhatech/simplesessions/stores/redis"
+	"github.com/vividvilla/simplesessions"
+	"github.com/vividvilla/simplesessions/stores/redis"
 )
 
 var (

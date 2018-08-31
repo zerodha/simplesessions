@@ -14,7 +14,7 @@ Most session libraries are highly opinionated and hard-wired to work with `net/h
 Install `simplesessions` and all [available stores](/stores).
 
 ```
-go get github.com/zerodhatech/simplesessions/...
+go get github.com/vividvilla/simplesessions/...
 ```
 
 # Stores
@@ -134,6 +134,3 @@ func main() {
 	http.HandleFunc("/set", handler)
 }
 ```
-
-## License
-Copyright (c) Zerodha Technology Pvt. Ltd. All rights reserved. Licensed under the MIT License.

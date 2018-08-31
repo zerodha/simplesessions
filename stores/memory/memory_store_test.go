@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/zerodhatech/simplesessions"
+	"github.com/vividvilla/simplesessions"
 )
 
 func TestNew(t *testing.T) {
