@@ -23,7 +23,7 @@ Sessions can be stored to any backend by implementing the [store](/store.go) int
 
 * [in-memory](/stores/memory)
 * [redis](/stores/redis)
-* [securecookie](/stores/securecookie)
+* [secure cookie](/stores/securecookie)
 
 # Usage
 Check the [examples](/examples) directory for complete examples.
@@ -33,7 +33,7 @@ Stores can be registered to a session instance by using `Use` method.
 
 ```go
 sess := simplesessions.New(simplesessions.Options{})
-sess.UseStore(memorystore.New())
+sess.UseStore(memory.New())
 ```
 
 ## Connecting an HTTP handler
@@ -94,7 +94,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	// call `Commit` method when you set all the values.
 	err = sess.Set("somekey", "somevalue")
 	err = sess.Set("someotherkey", 10)
-	err = sess.commit()
+	err = sess.Commit()
 
 	// Use `Get` method to get a field from current session. The result will be an interface
 	// so you can use helper methods like
@@ -124,7 +124,7 @@ func main() {
 	// cookie domain, is secure cookie etc. Check `Options` struct for more options.
 	sessMan := simplesessions.New(simplesessions.Options{})
 	// Create a new store instance and attach to session manager
-	sessMan.UseStore(memorystore.New())
+	sessMan.UseStore(memory.New())
 	// Register callbacks for read and write cookie
 	// Get cookie callback should get cookie based on cookie name and
 	// sent back in net/http cookie format.

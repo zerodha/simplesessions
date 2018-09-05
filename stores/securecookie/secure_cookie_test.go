@@ -1,4 +1,4 @@
-package securecookiestore
+package securecookie
 
 import (
 	"errors"

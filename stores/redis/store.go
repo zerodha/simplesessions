@@ -1,4 +1,4 @@
-package redisstore
+package redis
 
 import (
 	"errors"
@@ -9,9 +9,9 @@ import (
 	"github.com/vividvilla/simplesessions"
 )
 
-// RedisStore represents redis session store for simple sessions.
+// Store represents redis session store for simple sessions.
 // Each session is stored as redis hashmap.
-type RedisStore struct {
+type Store struct {
 	// Maximum lifetime sessions has to be persisted.
 	ttl time.Duration
 
@@ -33,8 +33,8 @@ const (
 )
 
 // New creates a new in-memory store instance
-func New(pool *redis.Pool) *RedisStore {
-	return &RedisStore{
+func New(pool *redis.Pool) *Store {
+	return &Store{
 		pool:       pool,
 		prefix:     defaultPrefix,
 		tempSetMap: make(map[string]map[string]interface{}),
@@ -42,28 +42,28 @@ func New(pool *redis.Pool) *RedisStore {
 }
 
 // SetPrefix sets session id prefix in backend
-func (s *RedisStore) SetPrefix(val string) {
+func (s *Store) SetPrefix(val string) {
 	s.prefix = val
 }
 
 // SetTTL sets TTL for session in redis.
-func (s *RedisStore) SetTTL(d time.Duration) {
+func (s *Store) SetTTL(d time.Duration) {
 	s.ttl = d
 }
 
 // isValidSessionID checks is the given session id is valid.
-func (s *RedisStore) isValidSessionID(sess *simplesessions.Session, id string) bool {
+func (s *Store) isValidSessionID(sess *simplesessions.Session, id string) bool {
 	return len(id) == sessionIDLen && sess.IsValidRandomString(id)
 }
 
 // IsValid checks if the session is set for the id.
-func (s *RedisStore) IsValid(sess *simplesessions.Session, id string) (bool, error) {
+func (s *Store) IsValid(sess *simplesessions.Session, id string) (bool, error) {
 	// Validate session is valid generate string or not
 	return s.isValidSessionID(sess, id), nil
 }
 
 // Create returns a new session id but doesn't stores it in redis since empty hashmap can't be created.
-func (s *RedisStore) Create(sess *simplesessions.Session) (string, error) {
+func (s *Store) Create(sess *simplesessions.Session) (string, error) {
 	id, err := sess.GenerateRandomString(sessionIDLen)
 	if err != nil {
 		return "", err
@@ -73,7 +73,7 @@ func (s *RedisStore) Create(sess *simplesessions.Session) (string, error) {
 }
 
 // Get gets a field in hashmap. If field is nill then ErrFieldNotFound is raised
-func (s *RedisStore) Get(sess *simplesessions.Session, id, key string) (interface{}, error) {
+func (s *Store) Get(sess *simplesessions.Session, id, key string) (interface{}, error) {
 	// Check if valid session
 	if !s.isValidSessionID(sess, id) {
 		return nil, simplesessions.ErrInvalidSession
@@ -91,7 +91,7 @@ func (s *RedisStore) Get(sess *simplesessions.Session, id, key string) (interfac
 }
 
 // GetMulti gets a map for values for multiple keys. If key is not found then its set as nil.
-func (s *RedisStore) GetMulti(sess *simplesessions.Session, id string, keys ...string) (map[string]interface{}, error) {
+func (s *Store) GetMulti(sess *simplesessions.Session, id string, keys ...string) (map[string]interface{}, error) {
 	// Check if valid session
 	if !s.isValidSessionID(sess, id) {
 		return nil, simplesessions.ErrInvalidSession
@@ -123,7 +123,7 @@ func (s *RedisStore) GetMulti(sess *simplesessions.Session, id string, keys ...s
 }
 
 // GetAll gets all fields from hashmap.
-func (s *RedisStore) GetAll(sess *simplesessions.Session, id string) (map[string]interface{}, error) {
+func (s *Store) GetAll(sess *simplesessions.Session, id string) (map[string]interface{}, error) {
 	// Check if valid session
 	if !s.isValidSessionID(sess, id) {
 		return nil, simplesessions.ErrInvalidSession
@@ -136,7 +136,7 @@ func (s *RedisStore) GetAll(sess *simplesessions.Session, id string) (map[string
 }
 
 // Set sets a value to given session but stored only on commit
-func (s *RedisStore) Set(sess *simplesessions.Session, id, key string, val interface{}) error {
+func (s *Store) Set(sess *simplesessions.Session, id, key string, val interface{}) error {
 	// Check if valid session
 	if !s.isValidSessionID(sess, id) {
 		return simplesessions.ErrInvalidSession
@@ -157,7 +157,7 @@ func (s *RedisStore) Set(sess *simplesessions.Session, id, key string, val inter
 }
 
 // Commit sets all set values
-func (s *RedisStore) Commit(sess *simplesessions.Session, id string) error {
+func (s *Store) Commit(sess *simplesessions.Session, id string) error {
 	// Check if valid session
 	if !s.isValidSessionID(sess, id) {
 		return simplesessions.ErrInvalidSession
@@ -197,7 +197,7 @@ func (s *RedisStore) Commit(sess *simplesessions.Session, id string) error {
 }
 
 // Delete deletes a key from redis session hashmap.
-func (s *RedisStore) Delete(sess *simplesessions.Session, id string, key string) error {
+func (s *Store) Delete(sess *simplesessions.Session, id string, key string) error {
 	// Check if valid session
 	if !s.isValidSessionID(sess, id) {
 		return simplesessions.ErrInvalidSession
@@ -216,7 +216,7 @@ func (s *RedisStore) Delete(sess *simplesessions.Session, id string, key string)
 }
 
 // Clear clears session in redis.
-func (s *RedisStore) Clear(sess *simplesessions.Session, id string) error {
+func (s *Store) Clear(sess *simplesessions.Session, id string) error {
 	// Check if valid session
 	if !s.isValidSessionID(sess, id) {
 		return simplesessions.ErrInvalidSession
@@ -230,7 +230,7 @@ func (s *RedisStore) Clear(sess *simplesessions.Session, id string) error {
 }
 
 // interfaceMap is a helper method which converts HGETALL reply to map of string interface
-func (s *RedisStore) interfaceMap(result interface{}, err error) (map[string]interface{}, error) {
+func (s *Store) interfaceMap(result interface{}, err error) (map[string]interface{}, error) {
 	values, err := redis.Values(result, err)
 	if err != nil {
 		return nil, err
@@ -254,36 +254,36 @@ func (s *RedisStore) interfaceMap(result interface{}, err error) (map[string]int
 }
 
 // Int returns redis reply as integer.
-func (s *RedisStore) Int(r interface{}, err error) (int, error) {
+func (s *Store) Int(r interface{}, err error) (int, error) {
 	return redis.Int(r, err)
 }
 
 // Int64 returns redis reply as Int64.
-func (s *RedisStore) Int64(r interface{}, err error) (int64, error) {
+func (s *Store) Int64(r interface{}, err error) (int64, error) {
 	return redis.Int64(r, err)
 }
 
 // UInt64 returns redis reply as UInt64.
-func (s *RedisStore) UInt64(r interface{}, err error) (uint64, error) {
+func (s *Store) UInt64(r interface{}, err error) (uint64, error) {
 	return redis.Uint64(r, err)
 }
 
 // Float64 returns redis reply as Float64.
-func (s *RedisStore) Float64(r interface{}, err error) (float64, error) {
+func (s *Store) Float64(r interface{}, err error) (float64, error) {
 	return redis.Float64(r, err)
 }
 
 // String returns redis reply as String.
-func (s *RedisStore) String(r interface{}, err error) (string, error) {
+func (s *Store) String(r interface{}, err error) (string, error) {
 	return redis.String(r, err)
 }
 
 // Bytes returns redis reply as Bytes.
-func (s *RedisStore) Bytes(r interface{}, err error) ([]byte, error) {
+func (s *Store) Bytes(r interface{}, err error) ([]byte, error) {
 	return redis.Bytes(r, err)
 }
 
 // Bool returns redis reply as Bool.
-func (s *RedisStore) Bool(r interface{}, err error) (bool, error) {
+func (s *Store) Bool(r interface{}, err error) (bool, error) {
 	return redis.Bool(r, err)
 }
