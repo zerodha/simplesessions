@@ -1,4 +1,4 @@
-package memorystore
+package memory
 
 import (
 	"sync"
@@ -10,8 +10,8 @@ const (
 	sessionIDLen = 32
 )
 
-// MemoryStore represents in-memory session store
-type MemoryStore struct {
+// Store represents in-memory session store
+type Store struct {
 	// map to store all sessions and its values
 	sessions map[string]map[string]interface{}
 
@@ -19,26 +19,26 @@ type MemoryStore struct {
 }
 
 // New creates a new in-memory store instance
-func New() *MemoryStore {
-	return &MemoryStore{
+func New() *Store {
+	return &Store{
 		sessions: make(map[string]map[string]interface{}),
 	}
 }
 
 // isValidSessionID checks is the given session id is valid.
-func (s *MemoryStore) isValidSessionID(sess *simplesessions.Session, id string) bool {
+func (s *Store) isValidSessionID(sess *simplesessions.Session, id string) bool {
 	return len(id) == sessionIDLen && sess.IsValidRandomString(id)
 }
 
 // IsValid checks if the session is set for the id
-func (s *MemoryStore) IsValid(sess *simplesessions.Session, id string) (bool, error) {
+func (s *Store) IsValid(sess *simplesessions.Session, id string) (bool, error) {
 	return s.isValidSessionID(sess, id), nil
 }
 
 // Create creates a new session id and returns it. This doesn't create the session in
 // sessions map since memory can be saved by not storing empty sessions and system
 // can not be stressed by just creating new sessions
-func (s *MemoryStore) Create(sess *simplesessions.Session) (string, error) {
+func (s *Store) Create(sess *simplesessions.Session) (string, error) {
 	id, err := sess.GenerateRandomString(sessionIDLen)
 	if err != nil {
 		return "", err
@@ -48,7 +48,7 @@ func (s *MemoryStore) Create(sess *simplesessions.Session) (string, error) {
 }
 
 // Get gets a field in session
-func (s *MemoryStore) Get(sess *simplesessions.Session, id, key string) (interface{}, error) {
+func (s *Store) Get(sess *simplesessions.Session, id, key string) (interface{}, error) {
 	if !s.isValidSessionID(sess, id) {
 		return nil, simplesessions.ErrInvalidSession
 	}
@@ -72,7 +72,7 @@ func (s *MemoryStore) Get(sess *simplesessions.Session, id, key string) (interfa
 }
 
 // GetMulti gets a map for values for multiple keys. If key is not present in session then nil is returned.
-func (s *MemoryStore) GetMulti(sess *simplesessions.Session, id string, keys ...string) (map[string]interface{}, error) {
+func (s *Store) GetMulti(sess *simplesessions.Session, id string, keys ...string) (map[string]interface{}, error) {
 	// Check if valid session
 	if !s.isValidSessionID(sess, id) {
 		return nil, simplesessions.ErrInvalidSession
@@ -101,7 +101,7 @@ func (s *MemoryStore) GetMulti(sess *simplesessions.Session, id string, keys ...
 }
 
 // GetAll gets all fields in session
-func (s *MemoryStore) GetAll(sess *simplesessions.Session, id string) (map[string]interface{}, error) {
+func (s *Store) GetAll(sess *simplesessions.Session, id string) (map[string]interface{}, error) {
 	// Check if valid session
 	if !s.isValidSessionID(sess, id) {
 		return nil, simplesessions.ErrInvalidSession
@@ -115,7 +115,7 @@ func (s *MemoryStore) GetAll(sess *simplesessions.Session, id string) (map[strin
 }
 
 // Set sets a value to given session but stored only on commit
-func (s *MemoryStore) Set(sess *simplesessions.Session, id, key string, val interface{}) error {
+func (s *Store) Set(sess *simplesessions.Session, id, key string, val interface{}) error {
 	// Check if valid session
 	if !s.isValidSessionID(sess, id) {
 		return simplesessions.ErrInvalidSession
@@ -135,12 +135,12 @@ func (s *MemoryStore) Set(sess *simplesessions.Session, id, key string, val inte
 }
 
 // Commit does nothing here since Set sets the value.
-func (s *MemoryStore) Commit(sess *simplesessions.Session, id string) error {
+func (s *Store) Commit(sess *simplesessions.Session, id string) error {
 	return nil
 }
 
 // Delete deletes a key from session.
-func (s *MemoryStore) Delete(sess *simplesessions.Session, id string, key string) error {
+func (s *Store) Delete(sess *simplesessions.Session, id string, key string) error {
 	// Check if valid session
 	if !s.isValidSessionID(sess, id) {
 		return simplesessions.ErrInvalidSession
@@ -161,7 +161,7 @@ func (s *MemoryStore) Delete(sess *simplesessions.Session, id string, key string
 }
 
 // Clear clears session in redis.
-func (s *MemoryStore) Clear(sess *simplesessions.Session, id string) error {
+func (s *Store) Clear(sess *simplesessions.Session, id string) error {
 	// Check if valid session
 	if !s.isValidSessionID(sess, id) {
 		return simplesessions.ErrInvalidSession
@@ -179,7 +179,7 @@ func (s *MemoryStore) Clear(sess *simplesessions.Session, id string) error {
 }
 
 // Int is a helper method to type assert as integer
-func (s *MemoryStore) Int(r interface{}, err error) (int, error) {
+func (s *Store) Int(r interface{}, err error) (int, error) {
 	if err != nil {
 		return 0, err
 	}
@@ -193,7 +193,7 @@ func (s *MemoryStore) Int(r interface{}, err error) (int, error) {
 }
 
 // Int64 is a helper method to type assert as Int64
-func (s *MemoryStore) Int64(r interface{}, err error) (int64, error) {
+func (s *Store) Int64(r interface{}, err error) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
@@ -207,7 +207,7 @@ func (s *MemoryStore) Int64(r interface{}, err error) (int64, error) {
 }
 
 // UInt64 is a helper method to type assert as UInt64
-func (s *MemoryStore) UInt64(r interface{}, err error) (uint64, error) {
+func (s *Store) UInt64(r interface{}, err error) (uint64, error) {
 	if err != nil {
 		return 0, err
 	}
@@ -221,7 +221,7 @@ func (s *MemoryStore) UInt64(r interface{}, err error) (uint64, error) {
 }
 
 // Float64 is a helper method to type assert as Float64
-func (s *MemoryStore) Float64(r interface{}, err error) (float64, error) {
+func (s *Store) Float64(r interface{}, err error) (float64, error) {
 	if err != nil {
 		return 0, err
 	}
@@ -235,7 +235,7 @@ func (s *MemoryStore) Float64(r interface{}, err error) (float64, error) {
 }
 
 // String is a helper method to type assert as String
-func (s *MemoryStore) String(r interface{}, err error) (string, error) {
+func (s *Store) String(r interface{}, err error) (string, error) {
 	if err != nil {
 		return "", err
 	}
@@ -249,7 +249,7 @@ func (s *MemoryStore) String(r interface{}, err error) (string, error) {
 }
 
 // Bytes is a helper method to type assert as Bytes
-func (s *MemoryStore) Bytes(r interface{}, err error) ([]byte, error) {
+func (s *Store) Bytes(r interface{}, err error) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
@@ -263,7 +263,7 @@ func (s *MemoryStore) Bytes(r interface{}, err error) ([]byte, error) {
 }
 
 // Bool is a helper method to type assert as Bool
-func (s *MemoryStore) Bool(r interface{}, err error) (bool, error) {
+func (s *Store) Bool(r interface{}, err error) (bool, error) {
 	if err != nil {
 		return false, err
 	}

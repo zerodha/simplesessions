@@ -71,7 +71,7 @@ func setCookie(cookie *http.Cookie, w interface{}) error {
 
 func main() {
 	sessionManager = simplesessions.New(simplesessions.Options{})
-	sessionManager.UseStore(memorystore.New())
+	sessionManager.UseStore(memory.New())
 	sessionManager.RegisterGetCookie(getCookie)
 	sessionManager.RegisterSetCookie(setCookie)
 

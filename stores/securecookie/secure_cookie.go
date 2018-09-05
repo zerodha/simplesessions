@@ -1,4 +1,4 @@
-package securecookiestore
+package securecookie
 
 import (
 	"sync"
@@ -11,8 +11,8 @@ const (
 	cookieName = "session"
 )
 
-// SecureCookieStore represents secure cookie session store
-type SecureCookieStore struct {
+// Store represents secure cookie session store
+type Store struct {
 	// Temp map to store values before commit.
 	tempSetMap map[string]map[string]interface{}
 	mu         sync.RWMutex
@@ -27,27 +27,27 @@ type SecureCookieStore struct {
 // The blockKey is optional, used to encrypt the cookie value -- set it to nil to not use encryption.
 // If set, the length must correspond to the block size of the encryption algorithm.
 // For AES, used by default, valid lengths are 16, 24, or 32 bytes to select AES-128, AES-192, or AES-256.
-func New(secretKey []byte, blockKey []byte) *SecureCookieStore {
-	return &SecureCookieStore{
+func New(secretKey []byte, blockKey []byte) *Store {
+	return &Store{
 		sc:         securecookie.New(secretKey, blockKey),
 		tempSetMap: make(map[string]map[string]interface{}),
 	}
 }
 
 // encode and encrypt given interface
-func (s *SecureCookieStore) encode(val interface{}) (string, error) {
+func (s *Store) encode(val interface{}) (string, error) {
 	return s.sc.Encode(cookieName, val)
 }
 
 // decode encoded value to map
-func (s *SecureCookieStore) decode(cookieVal string) (map[string]interface{}, error) {
+func (s *Store) decode(cookieVal string) (map[string]interface{}, error) {
 	val := make(map[string]interface{})
 	err := s.sc.Decode(cookieName, cookieVal, &val)
 	return val, err
 }
 
 // IsValid checks if the given cookie value is valid.
-func (s *SecureCookieStore) IsValid(sess *simplesessions.Session, cv string) (bool, error) {
+func (s *Store) IsValid(sess *simplesessions.Session, cv string) (bool, error) {
 	if _, err := s.decode(cv); err != nil {
 		return false, nil
 	}
@@ -56,13 +56,13 @@ func (s *SecureCookieStore) IsValid(sess *simplesessions.Session, cv string) (bo
 }
 
 // Create creates a new secure cookie session with empty map.
-func (s *SecureCookieStore) Create(sess *simplesessions.Session) (string, error) {
+func (s *Store) Create(sess *simplesessions.Session) (string, error) {
 	// Create empty cookie
 	return s.encode(make(map[string]interface{}))
 }
 
 // Get returns a field value from session
-func (s *SecureCookieStore) Get(sess *simplesessions.Session, cv, key string) (interface{}, error) {
+func (s *Store) Get(sess *simplesessions.Session, cv, key string) (interface{}, error) {
 	// Decode cookie value
 	vals, err := s.decode(cv)
 	if err != nil {
@@ -80,7 +80,7 @@ func (s *SecureCookieStore) Get(sess *simplesessions.Session, cv, key string) (i
 
 // GetMulti returns values for multiple fields in session.
 // If a field is not present then nil is returned.
-func (s *SecureCookieStore) GetMulti(sess *simplesessions.Session, cv string, keys ...string) (map[string]interface{}, error) {
+func (s *Store) GetMulti(sess *simplesessions.Session, cv string, keys ...string) (map[string]interface{}, error) {
 	// Decode cookie value
 	vals, err := s.decode(cv)
 	if err != nil {
@@ -97,7 +97,7 @@ func (s *SecureCookieStore) GetMulti(sess *simplesessions.Session, cv string, ke
 }
 
 // GetAll returns all field for given session.
-func (s *SecureCookieStore) GetAll(sess *simplesessions.Session, cv string) (map[string]interface{}, error) {
+func (s *Store) GetAll(sess *simplesessions.Session, cv string) (map[string]interface{}, error) {
 	vals, err := s.decode(cv)
 	if err != nil {
 		return nil, simplesessions.ErrInvalidSession
@@ -107,7 +107,7 @@ func (s *SecureCookieStore) GetAll(sess *simplesessions.Session, cv string) (map
 }
 
 // Set sets a field in session but not saved untill commit is called.
-func (s *SecureCookieStore) Set(sess *simplesessions.Session, cv, key string, val interface{}) error {
+func (s *Store) Set(sess *simplesessions.Session, cv, key string, val interface{}) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -123,7 +123,7 @@ func (s *SecureCookieStore) Set(sess *simplesessions.Session, cv, key string, va
 }
 
 // Commit saves all the field set previously to cookie.
-func (s *SecureCookieStore) Commit(sess *simplesessions.Session, cv string) error {
+func (s *Store) Commit(sess *simplesessions.Session, cv string) error {
 	// Decode current cookie
 	vals, err := s.decode(cv)
 	if err != nil {
@@ -159,7 +159,7 @@ func (s *SecureCookieStore) Commit(sess *simplesessions.Session, cv string) erro
 }
 
 // Delete deletes a field from session.
-func (s *SecureCookieStore) Delete(sess *simplesessions.Session, cv, key string) error {
+func (s *Store) Delete(sess *simplesessions.Session, cv, key string) error {
 	// Decode current cookie
 	vals, err := s.decode(cv)
 	if err != nil {
@@ -185,7 +185,7 @@ func (s *SecureCookieStore) Delete(sess *simplesessions.Session, cv, key string)
 }
 
 // Clear clears the session.
-func (s *SecureCookieStore) Clear(sess *simplesessions.Session, id string) error {
+func (s *Store) Clear(sess *simplesessions.Session, id string) error {
 	encoded, err := s.encode(make(map[string]interface{}))
 	if err != nil {
 		return err
@@ -196,7 +196,7 @@ func (s *SecureCookieStore) Clear(sess *simplesessions.Session, id string) error
 }
 
 // Int is a helper method to type assert as integer
-func (s *SecureCookieStore) Int(r interface{}, err error) (int, error) {
+func (s *Store) Int(r interface{}, err error) (int, error) {
 	if err != nil {
 		return 0, err
 	}
@@ -210,7 +210,7 @@ func (s *SecureCookieStore) Int(r interface{}, err error) (int, error) {
 }
 
 // Int64 is a helper method to type assert as Int64
-func (s *SecureCookieStore) Int64(r interface{}, err error) (int64, error) {
+func (s *Store) Int64(r interface{}, err error) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
@@ -224,7 +224,7 @@ func (s *SecureCookieStore) Int64(r interface{}, err error) (int64, error) {
 }
 
 // UInt64 is a helper method to type assert as UInt64
-func (s *SecureCookieStore) UInt64(r interface{}, err error) (uint64, error) {
+func (s *Store) UInt64(r interface{}, err error) (uint64, error) {
 	if err != nil {
 		return 0, err
 	}
@@ -238,7 +238,7 @@ func (s *SecureCookieStore) UInt64(r interface{}, err error) (uint64, error) {
 }
 
 // Float64 is a helper method to type assert as Float64
-func (s *SecureCookieStore) Float64(r interface{}, err error) (float64, error) {
+func (s *Store) Float64(r interface{}, err error) (float64, error) {
 	if err != nil {
 		return 0, err
 	}
@@ -252,7 +252,7 @@ func (s *SecureCookieStore) Float64(r interface{}, err error) (float64, error) {
 }
 
 // String is a helper method to type assert as String
-func (s *SecureCookieStore) String(r interface{}, err error) (string, error) {
+func (s *Store) String(r interface{}, err error) (string, error) {
 	if err != nil {
 		return "", err
 	}
@@ -266,7 +266,7 @@ func (s *SecureCookieStore) String(r interface{}, err error) (string, error) {
 }
 
 // Bytes is a helper method to type assert as Bytes
-func (s *SecureCookieStore) Bytes(r interface{}, err error) ([]byte, error) {
+func (s *Store) Bytes(r interface{}, err error) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
@@ -280,7 +280,7 @@ func (s *SecureCookieStore) Bytes(r interface{}, err error) ([]byte, error) {
 }
 
 // Bool is a helper method to type assert as Bool
-func (s *SecureCookieStore) Bool(r interface{}, err error) (bool, error) {
+func (s *Store) Bool(r interface{}, err error) (bool, error) {
 	if err != nil {
 		return false, err
 	}
