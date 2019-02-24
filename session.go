@@ -164,6 +164,26 @@ func (s *Session) clearCookie() error {
 	return s.manager.setCookieCb(s.cookie, s.writer)
 }
 
+// Create a new session. This is implicit when option `DisableAutoSet` is false
+// else session has to be manually created before setting or getting values.
+func (s *Session) Create() error {
+	// Create new cookie in store and write to front.
+	cv, err := s.manager.store.Create(s)
+	if err != nil {
+		return err
+	}
+
+	// Write cookie
+	if err := s.WriteCookie(cv); err != nil {
+		return err
+	}
+
+	// Set isSet flag
+	s.isSet = true
+
+	return nil
+}
+
 // LoadValues loads the session values in memory.
 // Get session field tries to get value from memory before hitting store.
 func (s *Session) LoadValues() error {

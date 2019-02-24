@@ -368,6 +368,34 @@ func TestSessionClearCookie(t *testing.T) {
 	assert.True(receivedCookie.Expires.UnixNano() < time.Now().UnixNano())
 }
 
+func TestSessionCreate(t *testing.T) {
+	assert := assert.New(t)
+	mockStore := newMockStore()
+	mockStore.isValid = true
+	mockStore.val = "test"
+	mockManager := newMockManager(mockStore)
+	mockManager.opts.DisableAutoSet = true
+	mockManager.RegisterGetCookie(func(name string, r interface{}) (*http.Cookie, error) {
+		return nil, http.ErrNoCookie
+	})
+
+	var isCallbackTriggered bool
+	mockManager.RegisterSetCookie(func(cookie *http.Cookie, w interface{}) error {
+		isCallbackTriggered = true
+		return nil
+	})
+
+	sess, err := NewSession(mockManager, nil, nil)
+	assert.NoError(err)
+	assert.False(sess.isSet)
+	assert.False(isCallbackTriggered)
+
+	err = sess.Create()
+	assert.NoError(err)
+	assert.True(isCallbackTriggered)
+	assert.True(sess.isSet)
+}
+
 func TestSessionLoadValues(t *testing.T) {
 	mockStore := newMockStore()
 	mockStore.isValid = true
