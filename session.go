@@ -184,6 +184,14 @@ func (s *Session) Create() error {
 	return nil
 }
 
+// ID returns the acquired session ID. If cookie is not set then empty string is returned.
+func (s *Session) ID() string {
+	if s.cookie != nil {
+		return s.cookie.Value
+	}
+	return ""
+}
+
 // LoadValues loads the session values in memory.
 // Get session field tries to get value from memory before hitting store.
 func (s *Session) LoadValues() error {
