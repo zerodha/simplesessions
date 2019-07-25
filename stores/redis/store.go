@@ -32,7 +32,7 @@ const (
 	sessionIDLen  = 32
 )
 
-// New creates a new in-memory store instance
+// New creates a new Redis store instance.
 func New(pool *redis.Pool) *Store {
 	return &Store{
 		pool:       pool,
