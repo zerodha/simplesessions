@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	cookieName = "session"
+	defaultCookieName = "session"
 )
 
 // Store represents secure cookie session store
@@ -17,7 +17,8 @@ type Store struct {
 	tempSetMap map[string]map[string]interface{}
 	mu         sync.RWMutex
 
-	sc *securecookie.SecureCookie
+	sc         *securecookie.SecureCookie
+	cookieName string
 }
 
 // New creates a new secure cookie store instance. Gorilla/securecookie is used to encode and
@@ -29,6 +30,7 @@ type Store struct {
 // For AES, used by default, valid lengths are 16, 24, or 32 bytes to select AES-128, AES-192, or AES-256.
 func New(secretKey []byte, blockKey []byte) *Store {
 	return &Store{
+		cookieName: defaultCookieName,
 		sc:         securecookie.New(secretKey, blockKey),
 		tempSetMap: make(map[string]map[string]interface{}),
 	}
@@ -36,14 +38,19 @@ func New(secretKey []byte, blockKey []byte) *Store {
 
 // encode and encrypt given interface
 func (s *Store) encode(val interface{}) (string, error) {
-	return s.sc.Encode(cookieName, val)
+	return s.sc.Encode(s.cookieName, val)
 }
 
 // decode encoded value to map
 func (s *Store) decode(cookieVal string) (map[string]interface{}, error) {
 	val := make(map[string]interface{})
-	err := s.sc.Decode(cookieName, cookieVal, &val)
+	err := s.sc.Decode(s.cookieName, cookieVal, &val)
 	return val, err
+}
+
+// SetCookieName sets the cookie name for securecookie
+func (s *Store) SetCookieName(cookieName string) {
+	s.cookieName = cookieName
 }
 
 // IsValid checks if the given cookie value is valid.
