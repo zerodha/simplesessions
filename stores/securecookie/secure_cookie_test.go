@@ -22,6 +22,16 @@ func TestNew(t *testing.T) {
 	assert.NotNil(str.tempSetMap)
 }
 
+func TestSetCookieName(t *testing.T) {
+	assert := assert.New(t)
+	str := New(secretKey, blockKey)
+
+	assert.Equal(defaultCookieName, str.cookieName)
+
+	str.SetCookieName("csrftoken")
+	assert.Equal("csrftoken", str.cookieName)
+}
+
 func TestIsValid(t *testing.T) {
 	assert := assert.New(t)
 	str := New(secretKey, blockKey)
