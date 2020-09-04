@@ -45,7 +45,7 @@ type Options struct {
 	CookiePath string
 
 	// IsSecureCookie marks the cookie as secure cookie (only sent in HTTPS).
-	IsSecureCookie bool
+	IsSecureCooki bool
 
 	// IsHTTPOnlyCookie marks the cookie as http only cookie. JS won't be able to access the cookie so prevents XSS attacks.
 	IsHTTPOnlyCookie bool
