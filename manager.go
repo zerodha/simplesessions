@@ -53,6 +53,9 @@ type Options struct {
 	// CookieLifeTime sets expiry time for cookie.
 	// If expiry time is not specified then cookie is set as session cookie which is cleared on browser close.
 	CookieLifetime time.Duration
+
+	// SameSite sets allows you to declare if your cookie should be restricted to a first-party or same-site context.
+	SameSite http.SameSite
 }
 
 // New creates a new session manager for given options.

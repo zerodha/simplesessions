@@ -140,6 +140,7 @@ func (s *Session) WriteCookie(cv string) error {
 		Path:     s.manager.opts.CookiePath,
 		Secure:   s.manager.opts.IsSecureCookie,
 		HttpOnly: s.manager.opts.IsHTTPOnlyCookie,
+		SameSite: s.manager.opts.SameSite,
 	}
 
 	// Set cookie expiry

@@ -323,6 +323,7 @@ func TestSessionWriteCookie(t *testing.T) {
 		IsHTTPOnlyCookie: true,
 		IsSecureCookie:   true,
 		DisableAutoSet:   true,
+		SameSite:         http.SameSiteDefaultMode,
 	}
 	mockStore.isValid = true
 
@@ -335,6 +336,7 @@ func TestSessionWriteCookie(t *testing.T) {
 	assert.Equal(sess.cookie.Domain, mockManager.opts.CookieDomain)
 	assert.Equal(sess.cookie.Path, mockManager.opts.CookiePath)
 	assert.Equal(sess.cookie.Secure, mockManager.opts.IsSecureCookie)
+	assert.Equal(sess.cookie.SameSite, mockManager.opts.SameSite)
 	assert.Equal(sess.cookie.HttpOnly, mockManager.opts.IsHTTPOnlyCookie)
 
 	// Ignore seconds

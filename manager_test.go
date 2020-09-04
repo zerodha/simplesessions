@@ -27,6 +27,7 @@ func TestManagerNewManagerWithOptions(t *testing.T) {
 		CookiePath:       "/abc/123",
 		IsSecureCookie:   true,
 		IsHTTPOnlyCookie: true,
+		SameSite:         http.SameSiteLaxMode,
 		CookieLifetime:   2000 * time.Millisecond,
 	}
 
@@ -40,6 +41,7 @@ func TestManagerNewManagerWithOptions(t *testing.T) {
 	assert.Equal(m.opts.CookieDomain, opts.CookieDomain)
 	assert.Equal(m.opts.CookiePath, opts.CookiePath)
 	assert.Equal(m.opts.IsSecureCookie, opts.IsSecureCookie)
+	assert.Equal(m.opts.SameSite, opts.SameSite)
 	assert.Equal(m.opts.IsHTTPOnlyCookie, opts.IsHTTPOnlyCookie)
 	assert.Equal(m.opts.CookieLifetime, opts.CookieLifetime)
 }
