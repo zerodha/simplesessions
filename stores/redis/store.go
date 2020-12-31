@@ -191,9 +191,29 @@ func (s *Store) Commit(sess *simplesessions.Session, id string) error {
 	// Set to redis
 	conn := s.pool.Get()
 	defer conn.Close()
-	_, err := conn.Do("HMSET", args...)
 
-	return err
+	conn.Send("MULTI")
+	conn.Send("HMSET", args...)
+
+	// Set expiry of key only if 'ttl' is set, this is to
+	// ensure that the key remains valid indefinitely like
+	// how redis handles it by default
+	if s.ttl > 0 {
+		conn.Send("EXPIRE", args[0], s.ttl.Seconds())
+	}
+
+	res, err := redis.Values(conn.Do("EXEC"))
+	if err != nil {
+		return err
+	}
+
+	for _, r := range res {
+		if v, ok := r.(redis.Error); ok {
+			return v
+		}
+	}
+
+	return nil
 }
 
 // Delete deletes a key from redis session hashmap.
