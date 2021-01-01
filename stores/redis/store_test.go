@@ -320,11 +320,13 @@ func TestEmptyCommit(t *testing.T) {
 }
 
 func TestCommit(t *testing.T) {
-	// Test should only set in internal map and not in redis
+	// Test should commit in redis with expiry on key
 	assert := assert.New(t)
 	redisPool := getRedisPool()
 	str := New(redisPool)
 	sess := &simplesessions.Session{}
+
+	str.SetTTL(10 * time.Second)
 
 	// this key is unique across all tests
 	key := "8dIHy6S2uBuKaNnTUszB2180898ikGY1"
@@ -346,6 +348,11 @@ func TestCommit(t *testing.T) {
 	defer conn.Close()
 	vals, err := redis.Values(conn.Do("HGETALL", defaultPrefix+key))
 	assert.Equal(2*2, len(vals))
+
+	ttl, err := redis.Int(conn.Do("TTL", defaultPrefix+key))
+	assert.NoError(err)
+
+	assert.Equal(true, ttl > 0 && ttl <= 10)
 }
 
 func TestDeleteInvalidSessionError(t *testing.T) {
