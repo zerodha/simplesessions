@@ -2,13 +2,12 @@ package goredis
 
 import (
 	"context"
-	"fmt"
-	"strconv"
 	"sync"
 	"time"
 
 	"github.com/go-redis/redis/v8"
 	"github.com/vividvilla/simplesessions"
+	"github.com/vividvilla/simplesessions/conv"
 )
 
 // Store represents redis session store for simple sessions.
@@ -231,149 +230,35 @@ func (s *Store) Clear(sess *simplesessions.Session, id string) error {
 
 // Int returns redis reply as integer.
 func (s *Store) Int(r interface{}, err error) (int, error) {
-	if err != nil {
-		return 0, err
-	}
-
-	switch r := r.(type) {
-	case int:
-		return r, nil
-	case int64:
-		x := int(r)
-		if int64(x) != r {
-			return 0, strconv.ErrRange
-		}
-		return x, nil
-	case []byte:
-		n, err := strconv.ParseInt(string(r), 10, 0)
-		return int(n), err
-	case string:
-		n, err := strconv.ParseInt(r, 10, 0)
-		return int(n), err
-	case nil:
-		return 0, redis.Nil
-	}
-
-	return 0, fmt.Errorf("simplesssion: unexpected type for Int, got type %T", r)
+	return conv.Int(r, err)
 }
 
 // Int64 returns redis reply as Int64.
 func (s *Store) Int64(r interface{}, err error) (int64, error) {
-	if err != nil {
-		return 0, err
-	}
-
-	switch r := r.(type) {
-	case int64:
-		return r, nil
-	case []byte:
-		n, err := strconv.ParseInt(string(r), 10, 64)
-		return n, err
-	case string:
-		n, err := strconv.ParseInt(r, 10, 64)
-		return n, err
-	case nil:
-		return 0, redis.Nil
-	}
-
-	return 0, fmt.Errorf("simplesssion: unexpected type for Int64, got type %T", r)
+	return conv.Int64(r, err)
 }
 
 // UInt64 returns redis reply as UInt64.
 func (s *Store) UInt64(r interface{}, err error) (uint64, error) {
-	if err != nil {
-		return 0, err
-	}
-
-	switch r := r.(type) {
-	case uint64:
-		return r, err
-	case int64:
-		if r < 0 {
-			return 0, fmt.Errorf("simplesssion: unexpected type for Uint64")
-		}
-		return uint64(r), nil
-	case []byte:
-		n, err := strconv.ParseUint(string(r), 10, 64)
-		return n, err
-	case string:
-		n, err := strconv.ParseUint(r, 10, 64)
-		return n, err
-	case nil:
-		return 0, redis.Nil
-	}
-	return 0, fmt.Errorf("simplesssion: unexpected type for Uint64, got type %T", r)
+	return conv.UInt64(r, err)
 }
 
 // Float64 returns redis reply as Float64.
 func (s *Store) Float64(r interface{}, err error) (float64, error) {
-	if err != nil {
-		return 0, err
-	}
-	switch r := r.(type) {
-	case float64:
-		return r, err
-	case []byte:
-		n, err := strconv.ParseFloat(string(r), 64)
-		return n, err
-	case string:
-		n, err := strconv.ParseFloat(r, 64)
-		return n, err
-	case nil:
-		return 0, redis.Nil
-	}
-	return 0, fmt.Errorf("simplesssion: unexpected type for Float64, got type %T", r)
+	return conv.Float64(r, err)
 }
 
 // String returns redis reply as String.
 func (s *Store) String(r interface{}, err error) (string, error) {
-	if err != nil {
-		return "", err
-	}
-	switch r := r.(type) {
-	case []byte:
-		return string(r), nil
-	case string:
-		return r, nil
-	case nil:
-		return "", redis.Nil
-	}
-	return "", fmt.Errorf("simplesssion: unexpected type for String, got type %T", r)
+	return conv.String(r, err)
 }
 
 // Bytes returns redis reply as Bytes.
 func (s *Store) Bytes(r interface{}, err error) ([]byte, error) {
-	if err != nil {
-		return nil, err
-	}
-	switch r := r.(type) {
-	case []byte:
-		return r, nil
-	case string:
-		return []byte(r), nil
-	case nil:
-		return nil, redis.Nil
-	}
-	return nil, fmt.Errorf("simplesssion: unexpected type for Bytes, got type %T", r)
+	return conv.Bytes(r, err)
 }
 
 // Bool returns redis reply as Bool.
 func (s *Store) Bool(r interface{}, err error) (bool, error) {
-	if err != nil {
-		return false, err
-	}
-	switch r := r.(type) {
-	case bool:
-		return r, err
-	// Very common in redis to reply int64 with 0 for bool flag.
-	case int64:
-		return r != 0, nil
-	case []byte:
-		return strconv.ParseBool(string(r))
-	case string:
-		return strconv.ParseBool(r)
-	case nil:
-		return false, redis.Nil
-	}
-	return false, fmt.Errorf("simplesssion: unexpected type for Bool, got type %T", r)
+	return conv.Bool(r, err)
 }
