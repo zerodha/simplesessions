@@ -34,11 +34,13 @@ type Session struct {
 var (
 	// ErrInvalidSession is raised when session is tried to access before setting it or its not set in store.
 	// Handle this and create new session.
-	ErrInvalidSession = errors.New("invalid session")
+	ErrInvalidSession = errors.New("simplesession: invalid session")
 	// ErrFieldNotFound is raised when given key is not found in store
-	ErrFieldNotFound = errors.New("session field not found in store")
+	ErrFieldNotFound = errors.New("simplesession: session field not found in store")
 	// ErrAssertType is raised when type assertion fails
-	ErrAssertType = errors.New("invalid type assertion")
+	ErrAssertType = errors.New("simplesession: invalid type assertion")
+	// ErrNil is raised when returned value is nil.
+	ErrNil = errors.New("simplesession: nil returned")
 	// Dictionary for generating random string
 	dictionary = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 )
