@@ -277,6 +277,24 @@ func (s *Session) Set(key string, val interface{}) error {
 	return s.manager.store.Set(s, s.cookie.Value, key, val)
 }
 
+// SetMulti sets all values in the session.
+// Its up to store to commit all previously
+// set values at once or store it on each set.
+func (s *Session) SetMulti(values map[string]interface{}) error {
+	// Check if session is set before accessing it
+	if !s.isSet {
+		return ErrInvalidSession
+	}
+
+	for k, v := range values {
+		if err := s.manager.store.Set(s, s.cookie.Value, k, v); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 // Commit commits all set to store. Its up to store to commit
 // all previously set values at once or store it on each set.
 func (s *Session) Commit() error {
