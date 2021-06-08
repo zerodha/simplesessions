@@ -102,7 +102,7 @@ func (m *Manager) RegisterSetCookie(cb func(*http.Cookie, interface{}) error) {
 // In case of net/http `r` will be r`
 // Optionally context can be passed around which is used to get already loaded session. This is useful when
 // handler is wrapped with multiple middlewares and `Acquire` is already called in any of the middleware.
-func (m *Manager) Acquire(r, w interface{}, c context.Context) (*Session, error) {
+func (m *Manager) Acquire(c context.Context, r, w interface{}) (*Session, error) {
 	// Check if any store is set
 	if m.store == nil {
 		return nil, fmt.Errorf("session store is not set")
