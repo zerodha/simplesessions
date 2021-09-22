@@ -1,3 +1,5 @@
+<a href="https://zerodha.tech"><img src="https://zerodha.tech/static/images/github-badge.svg" align="right" /></a>
+
 # simplesessions
 simplesessions is a "pure" Go session library that is completely agnostic of HTTP libraries and frameworks, backend stores, and even cookie jars.
 
