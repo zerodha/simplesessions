@@ -1,49 +1,27 @@
-name: tests
+name: Run Tests
 
-on:
-  push:
-    branches:
-      - master
-  pull_request:
-    branches:
-      - master
+# Triggers the workflow on push or pull request events
+on: [push, pull_request]
 
 jobs:
   test:
     strategy:
-      ## this will contain a matrix of all of the combinations
-      ## we wish to test again:
       matrix:
-        go-version: [1.13.x, 1.14.x, 1.15.x]
-        platform: [ubuntu-latest]
+        go: [ '1.18', '1.19', '1.20', '1.21' ]
 
-    runs-on: ${{ matrix.platform }}
+    runs-on: ubuntu-20.04
 
+    name: Go ${{ matrix.go }} Tests
     steps:
-    # Setup Go
-    - name: Setup Go
-      uses: actions/setup-go@v2
-      with:
-        go-version: ${{ matrix.go-version }}
+      - uses: actions/checkout@v3
+ 
+      - name: Setup Go
+        uses: actions/setup-go@v3
+        with:
+          go-version: ${{ matrix.go }}
 
-    ## Checks out the code locally.
-    - name: Checkout code
-      uses: actions/checkout@v2
+      - name: Run all tests
+        run: go test -v github.com/vividvilla/simplesessions...
 
-    # Install all the dependencies
-    - name: Install dependencies
-      run: |
-        go version
-        go get -u golang.org/x/lint/golint
-        go get -v -t -d ./...
-
-    # Run vet & lint on the code
-    - name: Run vet & lint
-      run: |
-        go vet .
-        golint .
-
-    # Run testing on the code
-    - name: Run testing
-      run: |
-        go test -v -cover `go list ./... | grep -v 'examples\|benchmarks'`
+      - name: Run Coverage
+        run: go test -v -cover ./...
