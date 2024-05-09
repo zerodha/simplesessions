@@ -3,9 +3,29 @@ package conv
 
 import (
 	"strconv"
-
-	"github.com/vividvilla/simplesessions"
 )
+
+var (
+	// Error codes for store errors. This should match the codes
+	// defined in the /simplesessions package exactly.
+	ErrInvalidSession = &Err{code: 1, msg: "invalid session"}
+	ErrFieldNotFound  = &Err{code: 2, msg: "field not found"}
+	ErrAssertType     = &Err{code: 3, msg: "assertion failed"}
+	ErrNil            = &Err{code: 4, msg: "nil returned"}
+)
+
+type Err struct {
+	code int
+	msg  string
+}
+
+func (e *Err) Error() string {
+	return e.msg
+}
+
+func (e *Err) Code() int {
+	return e.code
+}
 
 // Int converts interface to integer.
 func Int(r interface{}, err error) (int, error) {
@@ -29,10 +49,10 @@ func Int(r interface{}, err error) (int, error) {
 		n, err := strconv.ParseInt(r, 10, 0)
 		return int(n), err
 	case nil:
-		return 0, simplesessions.ErrNil
+		return 0, ErrNil
 	}
 
-	return 0, simplesessions.ErrAssertType
+	return 0, ErrAssertType
 }
 
 // Int64 converts interface to Int64.
@@ -53,10 +73,10 @@ func Int64(r interface{}, err error) (int64, error) {
 		n, err := strconv.ParseInt(r, 10, 64)
 		return n, err
 	case nil:
-		return 0, simplesessions.ErrNil
+		return 0, ErrNil
 	}
 
-	return 0, simplesessions.ErrAssertType
+	return 0, ErrAssertType
 }
 
 // UInt64 converts interface to UInt64.
@@ -70,12 +90,12 @@ func UInt64(r interface{}, err error) (uint64, error) {
 		return r, err
 	case int:
 		if r < 0 {
-			return 0, simplesessions.ErrAssertType
+			return 0, ErrAssertType
 		}
 		return uint64(r), nil
 	case int64:
 		if r < 0 {
-			return 0, simplesessions.ErrAssertType
+			return 0, ErrAssertType
 		}
 		return uint64(r), nil
 	case []byte:
@@ -85,10 +105,10 @@ func UInt64(r interface{}, err error) (uint64, error) {
 		n, err := strconv.ParseUint(r, 10, 64)
 		return n, err
 	case nil:
-		return 0, simplesessions.ErrNil
+		return 0, ErrNil
 	}
 
-	return 0, simplesessions.ErrAssertType
+	return 0, ErrAssertType
 }
 
 // Float64 converts interface to Float64.
@@ -106,9 +126,9 @@ func Float64(r interface{}, err error) (float64, error) {
 		n, err := strconv.ParseFloat(r, 64)
 		return n, err
 	case nil:
-		return 0, simplesessions.ErrNil
+		return 0, ErrNil
 	}
-	return 0, simplesessions.ErrAssertType
+	return 0, ErrAssertType
 }
 
 // String converts interface to String.
@@ -122,9 +142,9 @@ func String(r interface{}, err error) (string, error) {
 	case string:
 		return r, nil
 	case nil:
-		return "", simplesessions.ErrNil
+		return "", ErrNil
 	}
-	return "", simplesessions.ErrAssertType
+	return "", ErrAssertType
 }
 
 // Bytes converts interface to Bytes.
@@ -138,9 +158,9 @@ func Bytes(r interface{}, err error) ([]byte, error) {
 	case string:
 		return []byte(r), nil
 	case nil:
-		return nil, simplesessions.ErrNil
+		return nil, ErrNil
 	}
-	return nil, simplesessions.ErrAssertType
+	return nil, ErrAssertType
 }
 
 // Bool converts interface to Bool.
@@ -161,7 +181,7 @@ func Bool(r interface{}, err error) (bool, error) {
 	case string:
 		return strconv.ParseBool(r)
 	case nil:
-		return false, simplesessions.ErrNil
+		return false, ErrNil
 	}
-	return false, simplesessions.ErrAssertType
+	return false, ErrAssertType
 }

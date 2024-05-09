@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/vividvilla/simplesessions"
 )
 
 var (
@@ -39,7 +38,7 @@ func TestInt(t *testing.T) {
 
 	// Test if ErrNil is returned if value is nil.
 	v, err = Int(nil, nil)
-	assert.Error(err, simplesessions.ErrNil)
+	assert.Error(err, ErrNil)
 	assert.Equal(0, v)
 
 	// Test if custom error sent is returned.
@@ -49,7 +48,7 @@ func TestInt(t *testing.T) {
 
 	// Test invalid assert error.
 	v, err = Int(10.1112, nil)
-	assert.Error(err, simplesessions.ErrAssertType)
+	assert.Error(err, ErrAssertType)
 	assert.Equal(0, v)
 }
 
@@ -75,7 +74,7 @@ func TestInt64(t *testing.T) {
 
 	// Test if ErrNil is returned if value is nil.
 	v, err = Int64(nil, nil)
-	assert.Error(err, simplesessions.ErrNil)
+	assert.Error(err, ErrNil)
 	assert.Equal(int64(0), v)
 
 	// Test if custom error sent is returned.
@@ -85,7 +84,7 @@ func TestInt64(t *testing.T) {
 
 	// Test invalid assert error.
 	v, err = Int64(10.1112, nil)
-	assert.Error(err, simplesessions.ErrAssertType)
+	assert.Error(err, ErrAssertType)
 	assert.Equal(int64(0), v)
 }
 
@@ -111,7 +110,7 @@ func TestUInt64(t *testing.T) {
 
 	// Test if ErrNil is returned if value is nil.
 	v, err = UInt64(nil, nil)
-	assert.Error(err, simplesessions.ErrNil)
+	assert.Error(err, ErrNil)
 	assert.Equal(uint64(0), v)
 
 	// Test if custom error sent is returned.
@@ -121,7 +120,7 @@ func TestUInt64(t *testing.T) {
 
 	// Test invalid assert error.
 	v, err = UInt64(10.1112, nil)
-	assert.Error(err, simplesessions.ErrAssertType)
+	assert.Error(err, ErrAssertType)
 	assert.Equal(uint64(0), v)
 }
 
@@ -147,7 +146,7 @@ func TestFloat64(t *testing.T) {
 
 	// Test if ErrNil is returned if value is nil.
 	v, err = Float64(nil, nil)
-	assert.Error(err, simplesessions.ErrNil)
+	assert.Error(err, ErrNil)
 	assert.Equal(float64(0), v)
 
 	// Test if custom error sent is returned.
@@ -157,7 +156,7 @@ func TestFloat64(t *testing.T) {
 
 	// Test invalid assert error.
 	v, err = Float64("abc", nil)
-	assert.Error(err, simplesessions.ErrAssertType)
+	assert.Error(err, ErrAssertType)
 	assert.Equal(float64(0), v)
 }
 
@@ -179,7 +178,7 @@ func TestString(t *testing.T) {
 
 	// Test if ErrNil is returned if value is nil.
 	v, err = String(nil, nil)
-	assert.Error(err, simplesessions.ErrNil)
+	assert.Error(err, ErrNil)
 	assert.Equal("", v)
 
 	// Test if custom error sent is returned.
@@ -189,7 +188,7 @@ func TestString(t *testing.T) {
 
 	// Test invalid assert error.
 	v, err = String(10.1112, nil)
-	assert.Error(err, simplesessions.ErrAssertType)
+	assert.Error(err, ErrAssertType)
 	assert.Equal("", v)
 }
 
@@ -211,7 +210,7 @@ func TestBytes(t *testing.T) {
 
 	// Test if ErrNil is returned if value is nil.
 	v, err = Bytes(nil, nil)
-	assert.Error(err, simplesessions.ErrNil)
+	assert.Error(err, ErrNil)
 	assert.Equal([]byte(nil), v)
 
 	// Test if custom error sent is returned.
@@ -221,7 +220,7 @@ func TestBytes(t *testing.T) {
 
 	// Test invalid assert error.
 	v, err = Bytes(10.1112, nil)
-	assert.Error(err, simplesessions.ErrAssertType)
+	assert.Error(err, ErrAssertType)
 	assert.Equal([]byte(nil), v)
 }
 
@@ -270,7 +269,7 @@ func TestBool(t *testing.T) {
 
 	// Test if ErrNil is returned if value is nil.
 	v, err = Bool(nil, nil)
-	assert.Error(err, simplesessions.ErrNil)
+	assert.Error(err, ErrNil)
 	assert.Equal(false, v)
 
 	// Test if custom error sent is returned.
@@ -280,6 +279,6 @@ func TestBool(t *testing.T) {
 
 	// Test invalid assert error.
 	v, err = Bool(10.1112, nil)
-	assert.Error(err, simplesessions.ErrAssertType)
+	assert.Error(err, ErrAssertType)
 	assert.Equal(false, v)
 }
