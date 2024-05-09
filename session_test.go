@@ -2,7 +2,6 @@ package simplesessions
 
 import (
 	"errors"
-	"math/rand"
 	"net/http"
 	"testing"
 	"time"
@@ -83,43 +82,6 @@ func TestSessionHelpers(t *testing.T) {
 	assert.Error(err, "test error")
 }
 
-func TestSessionGenerateRandomString(t *testing.T) {
-	assert := assert.New(t)
-	sess := Session{}
-
-	// Create random length string
-	rand.Seed(time.Now().Unix())
-	strLen := rand.Intn(1000-1) + 1
-	randStr, err := sess.GenerateRandomString(strLen)
-	assert.NoError(err)
-	assert.Equal(strLen, len(randStr))
-
-	// Check if it doesn't generate same id
-	randStr1, err := sess.GenerateRandomString(100)
-	assert.NoError(err)
-	randStr2, err := sess.GenerateRandomString(100)
-	assert.NoError(err)
-	assert.NotEqual(randStr1, randStr2)
-}
-
-func TestSessionisAlphaNum(t *testing.T) {
-	assert := assert.New(t)
-	sess := Session{}
-
-	assert.Equal(sess.isAlphaNum("thisisvalidstring"), true)
-	assert.Equal(sess.isAlphaNum("thisisNot$ a .validstring"), false)
-}
-
-func TestSessionIsValidRandomString(t *testing.T) {
-	assert := assert.New(t)
-	sess := Session{}
-
-	randStr, err := sess.GenerateRandomString(100)
-	assert.NoError(err)
-	assert.Equal(sess.IsValidRandomString(randStr), true)
-	assert.Equal(sess.IsValidRandomString(dictionary), true)
-}
-
 func TestSessionNewSession(t *testing.T) {
 	reader := "some reader"
 	writer := "some writer"
@@ -138,16 +100,6 @@ func TestSessionNewSession(t *testing.T) {
 	assert.Equal(sess.cookie.Name, defaultCookieName)
 	assert.Equal(sess.cookie.Value, testCookieValue)
 	assert.True(sess.isSet)
-}
-
-func TestSessionNewSessionInvalidSession(t *testing.T) {
-	assert := assert.New(t)
-	mockStore := newMockStore()
-	mockManager := newMockManager(mockStore)
-
-	sess, err := NewSession(mockManager, nil, nil)
-	assert.Error(err, ErrInvalidSession.Error())
-	assert.Nil(sess)
 }
 
 func TestSessionNewSessionErrorStoreCreate(t *testing.T) {
@@ -184,19 +136,6 @@ func TestSessionNewSessionErrorWriteCookie(t *testing.T) {
 	mockManager.RegisterSetCookie(func(cookie *http.Cookie, w interface{}) error {
 		return testError
 	})
-
-	sess, err := NewSession(mockManager, nil, nil)
-	assert.Error(err, testError.Error())
-	assert.Nil(sess)
-}
-
-func TestSessionNewSessionErrorStoreIsValid(t *testing.T) {
-	assert := assert.New(t)
-	mockStore := newMockStore()
-	mockManager := newMockManager(mockStore)
-
-	testError := errors.New("this is test error")
-	mockStore.err = testError
 
 	sess, err := NewSession(mockManager, nil, nil)
 	assert.Error(err, testError.Error())

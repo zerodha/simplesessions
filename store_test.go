@@ -17,46 +17,42 @@ func (s *MockStore) reset() {
 	s.isCommited = false
 }
 
-func (s *MockStore) IsValid(ss *Session, cv string) (isExist bool, err error) {
-	return s.isValid, s.err
-}
-
-func (s *MockStore) Create(ss *Session) (cv string, err error) {
+func (s *MockStore) Create() (cv string, err error) {
 	return s.val.(string), s.err
 }
 
-func (s *MockStore) Get(ss *Session, cv, key string) (value interface{}, err error) {
+func (s *MockStore) Get(cv, key string) (value interface{}, err error) {
 	return s.val, s.err
 }
 
-func (s *MockStore) GetMulti(ss *Session, cv string, keys ...string) (values map[string]interface{}, err error) {
+func (s *MockStore) GetMulti(cv string, keys ...string) (values map[string]interface{}, err error) {
 	vals := make(map[string]interface{})
 	vals["val"] = s.val
 	return vals, s.err
 }
 
-func (s *MockStore) GetAll(ss *Session, cv string) (values map[string]interface{}, err error) {
+func (s *MockStore) GetAll(cv string) (values map[string]interface{}, err error) {
 	vals := make(map[string]interface{})
 	vals["val"] = s.val
 	return vals, s.err
 }
 
-func (s *MockStore) Set(ss *Session, cv, key string, value interface{}) error {
+func (s *MockStore) Set(cv, key string, value interface{}) error {
 	s.val = value
 	return s.err
 }
 
-func (s *MockStore) Commit(ss *Session, cv string) error {
+func (s *MockStore) Commit(cv string) error {
 	s.isCommited = true
 	return s.err
 }
 
-func (s *MockStore) Delete(ss *Session, cv string, key string) error {
+func (s *MockStore) Delete(cv string, key string) error {
 	s.val = nil
 	return s.err
 }
 
-func (s *MockStore) Clear(ss *Session, cv string) error {
+func (s *MockStore) Clear(cv string) error {
 	s.val = nil
 	return s.err
 }
