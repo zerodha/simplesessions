@@ -668,3 +668,32 @@ func TestSessionClearInvalidSession(t *testing.T) {
 	err = sess.Clear()
 	assert.Error(err, ErrInvalidSession.Error())
 }
+
+type Err struct {
+	code int
+	msg  string
+}
+
+func (e *Err) Error() string {
+	return e.msg
+}
+
+func (e *Err) Code() int {
+	return e.code
+}
+
+func TestErrorTypes(t *testing.T) {
+	var (
+		// Error codes for store errors. This should match the codes
+		// defined in the /simplesessions package exactly.
+		errInvalidSession = &Err{code: 1, msg: "invalid session"}
+		errFieldNotFound  = &Err{code: 2, msg: "field not found"}
+		errAssertType     = &Err{code: 3, msg: "assertion failed"}
+		errNil            = &Err{code: 4, msg: "nil returned"}
+	)
+
+	assert.Equal(t, errAs(errInvalidSession), ErrInvalidSession)
+	assert.Equal(t, errAs(errFieldNotFound), ErrFieldNotFound)
+	assert.Equal(t, errAs(errAssertType), ErrAssertType)
+	assert.Equal(t, errAs(errNil), ErrNil)
+}
