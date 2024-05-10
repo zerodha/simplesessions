@@ -1,6 +1,8 @@
 module github.com/vividvilla/simplesessions/examples/nethttp-inmemory
 
+go 1.14
+
 require (
-	github.com/vividvilla/simplesessions v0.0.1
-	github.com/vividvilla/simplesessions/stores/memory v0.0.0-20180905073812-64bb2453ba8a
+	github.com/vividvilla/simplesessions/stores/memory/v2 v2.0.0
+	github.com/vividvilla/simplesessions/v2 v2.0.0
 )

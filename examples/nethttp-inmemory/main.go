@@ -5,8 +5,8 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/vividvilla/simplesessions"
-	"github.com/vividvilla/simplesessions/stores/memory"
+	"github.com/vividvilla/simplesessions/stores/memory/v2"
+	"github.com/vividvilla/simplesessions/v2"
 )
 
 var (

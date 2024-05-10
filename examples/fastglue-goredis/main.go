@@ -6,10 +6,10 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/go-redis/redis/v8"
+	"github.com/redis/go-redis/v9"
 	"github.com/valyala/fasthttp"
-	"github.com/vividvilla/simplesessions"
-	redisstore "github.com/vividvilla/simplesessions/stores/goredis"
+	redisstore "github.com/vividvilla/simplesessions/stores/goredis/v9"
+	"github.com/vividvilla/simplesessions/v2"
 	"github.com/zerodha/fastglue"
 )
 

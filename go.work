@@ -1,10 +1,10 @@
-go 1.18
+go 1.21
 
 use (
 	.
 	./conv
 	./stores/goredis
+	./stores/memory
 	./stores/redis
 	./stores/securecookie
-	./stores/memory
 )
