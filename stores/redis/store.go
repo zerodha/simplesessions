@@ -1,13 +1,36 @@
 package redis
 
 import (
+	"crypto/rand"
 	"errors"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/gomodule/redigo/redis"
-	"github.com/vividvilla/simplesessions"
 )
+
+var (
+	// Error codes for store errors. This should match the codes
+	// defined in the /simplesessions package exactly.
+	ErrInvalidSession = &Err{code: 1, msg: "invalid session"}
+	ErrFieldNotFound  = &Err{code: 2, msg: "field not found"}
+	ErrAssertType     = &Err{code: 3, msg: "assertion failed"}
+	ErrNil            = &Err{code: 4, msg: "nil returned"}
+)
+
+type Err struct {
+	code int
+	msg  string
+}
+
+func (e *Err) Error() string {
+	return e.msg
+}
+
+func (e *Err) Code() int {
+	return e.code
+}
 
 // Store represents redis session store for simple sessions.
 // Each session is stored as redis hashmap.
@@ -51,20 +74,9 @@ func (s *Store) SetTTL(d time.Duration) {
 	s.ttl = d
 }
 
-// isValidSessionID checks is the given session id is valid.
-func (s *Store) isValidSessionID(sess *simplesessions.Session, id string) bool {
-	return len(id) == sessionIDLen && sess.IsValidRandomString(id)
-}
-
-// IsValid checks if the session is set for the id.
-func (s *Store) IsValid(sess *simplesessions.Session, id string) (bool, error) {
-	// Validate session is valid generate string or not
-	return s.isValidSessionID(sess, id), nil
-}
-
 // Create returns a new session id but doesn't stores it in redis since empty hashmap can't be created.
-func (s *Store) Create(sess *simplesessions.Session) (string, error) {
-	id, err := sess.GenerateRandomString(sessionIDLen)
+func (s *Store) Create() (string, error) {
+	id, err := generateID(sessionIDLen)
 	if err != nil {
 		return "", err
 	}
@@ -73,10 +85,9 @@ func (s *Store) Create(sess *simplesessions.Session) (string, error) {
 }
 
 // Get gets a field in hashmap. If field is nill then ErrFieldNotFound is raised
-func (s *Store) Get(sess *simplesessions.Session, id, key string) (interface{}, error) {
-	// Check if valid session
-	if !s.isValidSessionID(sess, id) {
-		return nil, simplesessions.ErrInvalidSession
+func (s *Store) Get(id, key string) (interface{}, error) {
+	if !validateID(id) {
+		return nil, ErrInvalidSession
 	}
 
 	conn := s.pool.Get()
@@ -84,17 +95,16 @@ func (s *Store) Get(sess *simplesessions.Session, id, key string) (interface{}, 
 
 	v, err := conn.Do("HGET", s.prefix+id, key)
 	if v == nil || err == redis.ErrNil {
-		return nil, simplesessions.ErrFieldNotFound
+		return nil, ErrFieldNotFound
 	}
 
 	return v, err
 }
 
 // GetMulti gets a map for values for multiple keys. If key is not found then its set as nil.
-func (s *Store) GetMulti(sess *simplesessions.Session, id string, keys ...string) (map[string]interface{}, error) {
-	// Check if valid session
-	if !s.isValidSessionID(sess, id) {
-		return nil, simplesessions.ErrInvalidSession
+func (s *Store) GetMulti(id string, keys ...string) (map[string]interface{}, error) {
+	if !validateID(id) {
+		return nil, ErrInvalidSession
 	}
 
 	conn := s.pool.Get()
@@ -123,10 +133,9 @@ func (s *Store) GetMulti(sess *simplesessions.Session, id string, keys ...string
 }
 
 // GetAll gets all fields from hashmap.
-func (s *Store) GetAll(sess *simplesessions.Session, id string) (map[string]interface{}, error) {
-	// Check if valid session
-	if !s.isValidSessionID(sess, id) {
-		return nil, simplesessions.ErrInvalidSession
+func (s *Store) GetAll(id string) (map[string]interface{}, error) {
+	if !validateID(id) {
+		return nil, ErrInvalidSession
 	}
 
 	conn := s.pool.Get()
@@ -136,10 +145,9 @@ func (s *Store) GetAll(sess *simplesessions.Session, id string) (map[string]inte
 }
 
 // Set sets a value to given session but stored only on commit
-func (s *Store) Set(sess *simplesessions.Session, id, key string, val interface{}) error {
-	// Check if valid session
-	if !s.isValidSessionID(sess, id) {
-		return simplesessions.ErrInvalidSession
+func (s *Store) Set(id, key string, val interface{}) error {
+	if !validateID(id) {
+		return ErrInvalidSession
 	}
 
 	s.mu.Lock()
@@ -157,10 +165,9 @@ func (s *Store) Set(sess *simplesessions.Session, id, key string, val interface{
 }
 
 // Commit sets all set values
-func (s *Store) Commit(sess *simplesessions.Session, id string) error {
-	// Check if valid session
-	if !s.isValidSessionID(sess, id) {
-		return simplesessions.ErrInvalidSession
+func (s *Store) Commit(id string) error {
+	if !validateID(id) {
+		return ErrInvalidSession
 	}
 
 	s.mu.RLock()
@@ -217,10 +224,9 @@ func (s *Store) Commit(sess *simplesessions.Session, id string) error {
 }
 
 // Delete deletes a key from redis session hashmap.
-func (s *Store) Delete(sess *simplesessions.Session, id string, key string) error {
-	// Check if valid session
-	if !s.isValidSessionID(sess, id) {
-		return simplesessions.ErrInvalidSession
+func (s *Store) Delete(id string, key string) error {
+	if !validateID(id) {
+		return ErrInvalidSession
 	}
 
 	// Clear temp map for given session id
@@ -236,10 +242,9 @@ func (s *Store) Delete(sess *simplesessions.Session, id string, key string) erro
 }
 
 // Clear clears session in redis.
-func (s *Store) Clear(sess *simplesessions.Session, id string) error {
-	// Check if valid session
-	if !s.isValidSessionID(sess, id) {
-		return simplesessions.ErrInvalidSession
+func (s *Store) Clear(id string) error {
+	if !validateID(id) {
+		return ErrInvalidSession
 	}
 
 	conn := s.pool.Get()
@@ -306,4 +311,33 @@ func (s *Store) Bytes(r interface{}, err error) ([]byte, error) {
 // Bool returns redis reply as Bool.
 func (s *Store) Bool(r interface{}, err error) (bool, error) {
 	return redis.Bool(r, err)
+}
+
+func validateID(id string) bool {
+	if len(id) != sessionIDLen {
+		return false
+	}
+
+	for _, r := range id {
+		if !unicode.IsDigit(r) && !unicode.IsLetter(r) {
+			return false
+		}
+	}
+
+	return true
+}
+
+// generateID generates a random alpha-num session ID.
+func generateID(n int) (string, error) {
+	const dict = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+	bytes := make([]byte, n)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", err
+	}
+
+	for k, v := range bytes {
+		bytes[k] = dict[v%byte(len(dict))]
+	}
+
+	return string(bytes), nil
 }

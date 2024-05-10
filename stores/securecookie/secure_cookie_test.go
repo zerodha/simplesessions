@@ -2,11 +2,9 @@ package securecookie
 
 import (
 	"errors"
-	"net/http"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/vividvilla/simplesessions"
 )
 
 var (
@@ -35,33 +33,30 @@ func TestSetCookieName(t *testing.T) {
 func TestIsValid(t *testing.T) {
 	assert := assert.New(t)
 	str := New(secretKey, blockKey)
-	sess := &simplesessions.Session{}
 
-	assert.False(str.IsValid(sess, ""))
+	assert.False(str.IsValid(""))
 
 	encoded, err := str.encode(make(map[string]interface{}))
 	assert.Nil(err)
-	assert.True(str.IsValid(sess, encoded))
+	assert.True(str.IsValid(encoded))
 }
 
 func TestCreate(t *testing.T) {
 	assert := assert.New(t)
 	str := New(secretKey, blockKey)
-	sess := &simplesessions.Session{}
 
-	id, err := str.Create(sess)
+	id, err := str.Create()
 	assert.Nil(err)
-	assert.True(str.IsValid(sess, id))
+	assert.True(str.IsValid(id))
 }
 
 func TestGetInvalidSessionError(t *testing.T) {
 	assert := assert.New(t)
 	str := New(secretKey, blockKey)
-	sess := &simplesessions.Session{}
 
-	val, err := str.Get(sess, "invalidkey", "invalidkey")
+	val, err := str.Get("invalidkey", "invalidkey")
 	assert.Nil(val)
-	assert.Error(err, simplesessions.ErrInvalidSession.Error())
+	assert.Error(err, ErrInvalidSession.Error())
 }
 
 func TestGet(t *testing.T) {
@@ -71,14 +66,13 @@ func TestGet(t *testing.T) {
 
 	// Set a key
 	str := New(secretKey, blockKey)
-	sess := &simplesessions.Session{}
 
 	m := make(map[string]interface{})
 	m[field] = value
 	cv, err := str.encode(m)
 	assert.Nil(err)
 
-	val, err := str.Get(sess, cv, field)
+	val, err := str.Get(cv, field)
 	assert.NoError(err)
 	assert.Equal(val, value)
 }
@@ -89,36 +83,33 @@ func TestGetFieldNotFoundError(t *testing.T) {
 
 	// Set a key
 	str := New(secretKey, blockKey)
-	sess := &simplesessions.Session{}
 
 	m := make(map[string]interface{})
 	cv, err := str.encode(m)
 	assert.Nil(err)
 
-	_, err = str.Get(sess, cv, field)
-	assert.Error(simplesessions.ErrFieldNotFound)
+	_, err = str.Get(cv, field)
+	assert.Error(ErrFieldNotFound)
 }
 
 func TestGetMultiInvalidSessionError(t *testing.T) {
 	assert := assert.New(t)
 	str := New(secretKey, blockKey)
-	sess := &simplesessions.Session{}
 
-	val, err := str.GetMulti(sess, "invalidkey", "invalidkey")
+	val, err := str.GetMulti("invalidkey", "invalidkey")
 	assert.Nil(val)
-	assert.Error(err, simplesessions.ErrInvalidSession.Error())
+	assert.Error(err, ErrInvalidSession.Error())
 }
 
 func TestGetMultiFieldEmptySession(t *testing.T) {
 	assert := assert.New(t)
 	str := New(secretKey, blockKey)
-	sess := &simplesessions.Session{}
 
 	m := make(map[string]interface{})
 	cv, err := str.encode(m)
 	assert.Nil(err)
 
-	_, err = str.GetMulti(sess, cv)
+	_, err = str.GetMulti(cv)
 	assert.Nil(err)
 }
 
@@ -132,7 +123,6 @@ func TestGetMulti(t *testing.T) {
 	value3 := 100.10
 
 	str := New(secretKey, blockKey)
-	sess := &simplesessions.Session{}
 
 	// Set a key
 	m := make(map[string]interface{})
@@ -142,7 +132,7 @@ func TestGetMulti(t *testing.T) {
 	cv, err := str.encode(m)
 	assert.Nil(err)
 
-	vals, err := str.GetMulti(sess, cv, field1, field2)
+	vals, err := str.GetMulti(cv, field1, field2)
 	assert.NoError(err)
 	assert.Contains(vals, field1)
 	assert.Contains(vals, field2)
@@ -158,11 +148,10 @@ func TestGetMulti(t *testing.T) {
 func TestGetAllInvalidSessionError(t *testing.T) {
 	assert := assert.New(t)
 	str := New(secretKey, blockKey)
-	sess := &simplesessions.Session{}
 
-	val, err := str.GetAll(sess, "invalidkey")
+	val, err := str.GetAll("invalidkey")
 	assert.Nil(val)
-	assert.Error(err, simplesessions.ErrInvalidSession.Error())
+	assert.Error(err, ErrInvalidSession.Error())
 }
 
 func TestGetAll(t *testing.T) {
@@ -173,7 +162,6 @@ func TestGetAll(t *testing.T) {
 	value2 := "abc123"
 
 	str := New(secretKey, blockKey)
-	sess := &simplesessions.Session{}
 
 	// Set a key
 	m := make(map[string]interface{})
@@ -182,7 +170,7 @@ func TestGetAll(t *testing.T) {
 	cv, err := str.encode(m)
 	assert.Nil(err)
 
-	vals, err := str.GetAll(sess, cv)
+	vals, err := str.GetAll(cv)
 	assert.NoError(err)
 	assert.Contains(vals, field1)
 	assert.Contains(vals, field2)
@@ -198,7 +186,6 @@ func TestSet(t *testing.T) {
 	// Test should only set in internal map and not in redis
 	assert := assert.New(t)
 	str := New(secretKey, blockKey)
-	sess := &simplesessions.Session{}
 
 	// this key is unique across all tests
 	field := "somekey"
@@ -208,53 +195,29 @@ func TestSet(t *testing.T) {
 	cv, err := str.encode(m)
 	assert.Nil(err)
 
-	err = str.Set(sess, cv, field, value)
+	err = str.Set(cv, field, value)
 	assert.NoError(err)
 	assert.Contains(str.tempSetMap, cv)
 	assert.Contains(str.tempSetMap[cv], field)
 	assert.Equal(str.tempSetMap[cv][field], value)
 }
 
-func TestCommitInvalidSessionError(t *testing.T) {
-	assert := assert.New(t)
-	str := New(secretKey, blockKey)
-	sess := &simplesessions.Session{}
-
-	err := str.Commit(sess, "invalid")
-	assert.Error(err, simplesessions.ErrInvalidSession.Error())
-}
-
 func TestEmptyCommit(t *testing.T) {
 	assert := assert.New(t)
 	str := New(secretKey, blockKey)
-	sess := &simplesessions.Session{}
 
 	m := make(map[string]interface{})
 	cv, err := str.encode(m)
 	assert.Nil(err)
 
-	err = str.Commit(sess, cv)
+	v, err := str.Flush(cv)
+	assert.Empty(v)
 	assert.NoError(err)
 }
 
 func TestCommit(t *testing.T) {
 	assert := assert.New(t)
 	str := New(secretKey, blockKey)
-	sessMan := simplesessions.New(simplesessions.Options{})
-	sessMan.UseStore(str)
-
-	var receivedCookieValue string
-	sessMan.RegisterSetCookie(func(cookie *http.Cookie, w interface{}) error {
-		receivedCookieValue = cookie.Value
-		return nil
-	})
-
-	sessMan.RegisterGetCookie(func(name string, r interface{}) (*http.Cookie, error) {
-		return nil, http.ErrNoCookie
-	})
-
-	sess, err := simplesessions.NewSession(sessMan, nil, nil)
-	assert.Nil(err)
 
 	// this key is unique across all tests
 	field := "somekey"
@@ -264,15 +227,16 @@ func TestCommit(t *testing.T) {
 	cv, err := str.encode(m)
 	assert.Nil(err)
 
-	err = str.Set(sess, cv, field, value)
+	err = str.Set(cv, field, value)
 	assert.NoError(err)
 	assert.Equal(len(str.tempSetMap), 1)
 
-	err = str.Commit(sess, cv)
+	v, err := str.Flush(cv)
+	assert.NotEmpty(v)
 	assert.NoError(err)
 	assert.Equal(len(str.tempSetMap), 0)
 
-	decoded, err := str.decode(receivedCookieValue)
+	decoded, err := str.decode(v)
 	assert.NoError(err)
 	assert.Contains(decoded, field)
 	assert.Equal(decoded[field], value)
@@ -281,84 +245,29 @@ func TestCommit(t *testing.T) {
 func TestDeleteInvalidSessionError(t *testing.T) {
 	assert := assert.New(t)
 	str := New(secretKey, blockKey)
-	sess := &simplesessions.Session{}
 
-	err := str.Delete(sess, "invalidkey", "somekey")
-	assert.Error(err, simplesessions.ErrInvalidSession.Error())
+	err := str.Delete("invalidkey", "somekey")
+	assert.Error(err, ErrInvalidSession.Error())
 }
 
 func TestDelete(t *testing.T) {
 	assert := assert.New(t)
 	str := New(secretKey, blockKey)
-	sessMan := simplesessions.New(simplesessions.Options{})
-	sessMan.UseStore(str)
-
-	var receivedCookieValue string
-	sessMan.RegisterSetCookie(func(cookie *http.Cookie, w interface{}) error {
-		receivedCookieValue = cookie.Value
-		return nil
-	})
-
-	sessMan.RegisterGetCookie(func(name string, r interface{}) (*http.Cookie, error) {
-		return nil, http.ErrNoCookie
-	})
-
-	sess, err := simplesessions.NewSession(sessMan, nil, nil)
-	assert.Nil(err)
-
-	// this key is unique across all tests
-	field := "somekey"
-	value := 100
 
 	m := make(map[string]interface{})
-	m[field] = value
+	m["key1"] = "val1"
+	m["key2"] = "val2"
 	cv, err := str.encode(m)
 	assert.Nil(err)
 
-	err = str.Delete(sess, cv, field)
+	assert.NoError(str.Delete(cv, "key1"))
+
+	v, err := str.Flush(cv)
 	assert.NoError(err)
-	assert.Equal(len(str.tempSetMap), 0)
 
-	decoded, err := str.decode(receivedCookieValue)
+	decoded, err := str.decode(v)
 	assert.NoError(err)
-	assert.NotContains(decoded, field)
-}
-
-func TestClear(t *testing.T) {
-	assert := assert.New(t)
-	str := New(secretKey, blockKey)
-	sessMan := simplesessions.New(simplesessions.Options{})
-	sessMan.UseStore(str)
-
-	var receivedCookieValue string
-	sessMan.RegisterSetCookie(func(cookie *http.Cookie, w interface{}) error {
-		receivedCookieValue = cookie.Value
-		return nil
-	})
-
-	sessMan.RegisterGetCookie(func(name string, r interface{}) (*http.Cookie, error) {
-		return nil, http.ErrNoCookie
-	})
-
-	sess, err := simplesessions.NewSession(sessMan, nil, nil)
-	assert.Nil(err)
-
-	// this key is unique across all tests
-	field := "somekey"
-	value := 100
-
-	m := make(map[string]interface{})
-	m[field] = value
-	cv, err := str.encode(m)
-	assert.Nil(err)
-
-	err = str.Clear(sess, cv)
-	assert.NoError(err)
-	assert.Equal(len(str.tempSetMap), 0)
-
-	decoded, err := str.decode(receivedCookieValue)
-	assert.NoError(err)
-	assert.NotContains(decoded, field)
+	assert.NotContains(decoded, "key1")
 }
 
 func TestInt(t *testing.T) {
@@ -376,7 +285,7 @@ func TestInt(t *testing.T) {
 	assert.Error(testError)
 
 	_, err = str.Int("string", nil)
-	assert.Error(simplesessions.ErrAssertType)
+	assert.Error(ErrAssertType)
 }
 
 func TestInt64(t *testing.T) {
@@ -393,7 +302,7 @@ func TestInt64(t *testing.T) {
 	assert.Error(testError)
 
 	_, err = str.Int64("string", nil)
-	assert.Error(simplesessions.ErrAssertType)
+	assert.Error(ErrAssertType)
 }
 
 func TestUInt64(t *testing.T) {
@@ -410,7 +319,7 @@ func TestUInt64(t *testing.T) {
 	assert.Error(testError)
 
 	_, err = str.UInt64("string", nil)
-	assert.Error(simplesessions.ErrAssertType)
+	assert.Error(ErrAssertType)
 }
 
 func TestFloat64(t *testing.T) {
@@ -427,7 +336,7 @@ func TestFloat64(t *testing.T) {
 	assert.Error(testError)
 
 	_, err = str.Float64("string", nil)
-	assert.Error(simplesessions.ErrAssertType)
+	assert.Error(ErrAssertType)
 }
 
 func TestString(t *testing.T) {
@@ -444,7 +353,7 @@ func TestString(t *testing.T) {
 	assert.Error(testError)
 
 	_, err = str.String(123, nil)
-	assert.Error(simplesessions.ErrAssertType)
+	assert.Error(ErrAssertType)
 }
 
 func TestBytes(t *testing.T) {
@@ -461,7 +370,7 @@ func TestBytes(t *testing.T) {
 	assert.Error(testError)
 
 	_, err = str.Bytes("string", nil)
-	assert.Error(simplesessions.ErrAssertType)
+	assert.Error(ErrAssertType)
 }
 
 func TestBool(t *testing.T) {
@@ -478,5 +387,5 @@ func TestBool(t *testing.T) {
 	assert.Error(testError)
 
 	_, err = str.Bool("string", nil)
-	assert.Error(simplesessions.ErrAssertType)
+	assert.Error(ErrAssertType)
 }

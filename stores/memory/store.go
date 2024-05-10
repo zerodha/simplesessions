@@ -1,14 +1,36 @@
 package memory
 
 import (
+	"crypto/rand"
 	"sync"
-
-	"github.com/vividvilla/simplesessions"
+	"unicode"
 )
 
 const (
 	sessionIDLen = 32
 )
+
+var (
+	// Error codes for store errors. This should match the codes
+	// defined in the /simplesessions package exactly.
+	ErrInvalidSession = &Err{code: 1, msg: "invalid session"}
+	ErrFieldNotFound  = &Err{code: 2, msg: "field not found"}
+	ErrAssertType     = &Err{code: 3, msg: "assertion failed"}
+	ErrNil            = &Err{code: 4, msg: "nil returned"}
+)
+
+type Err struct {
+	code int
+	msg  string
+}
+
+func (e *Err) Error() string {
+	return e.msg
+}
+
+func (e *Err) Code() int {
+	return e.code
+}
 
 // Store represents in-memory session store
 type Store struct {
@@ -25,21 +47,11 @@ func New() *Store {
 	}
 }
 
-// isValidSessionID checks is the given session id is valid.
-func (s *Store) isValidSessionID(sess *simplesessions.Session, id string) bool {
-	return len(id) == sessionIDLen && sess.IsValidRandomString(id)
-}
-
-// IsValid checks if the session is set for the id
-func (s *Store) IsValid(sess *simplesessions.Session, id string) (bool, error) {
-	return s.isValidSessionID(sess, id), nil
-}
-
 // Create creates a new session id and returns it. This doesn't create the session in
 // sessions map since memory can be saved by not storing empty sessions and system
 // can not be stressed by just creating new sessions
-func (s *Store) Create(sess *simplesessions.Session) (string, error) {
-	id, err := sess.GenerateRandomString(sessionIDLen)
+func (s *Store) Create() (string, error) {
+	id, err := generateID(sessionIDLen)
 	if err != nil {
 		return "", err
 	}
@@ -48,9 +60,9 @@ func (s *Store) Create(sess *simplesessions.Session) (string, error) {
 }
 
 // Get gets a field in session
-func (s *Store) Get(sess *simplesessions.Session, id, key string) (interface{}, error) {
-	if !s.isValidSessionID(sess, id) {
-		return nil, simplesessions.ErrInvalidSession
+func (s *Store) Get(id, key string) (interface{}, error) {
+	if !validateID(id) {
+		return nil, ErrInvalidSession
 	}
 
 	var val interface{}
@@ -65,17 +77,16 @@ func (s *Store) Get(sess *simplesessions.Session, id, key string) (interface{}, 
 	// If session doesn't exist or field doesn't exist then send field not found error
 	// since we don't add session to sessions map on session create
 	if !ok || v == nil {
-		return nil, simplesessions.ErrFieldNotFound
+		return nil, ErrFieldNotFound
 	}
 
 	return val, nil
 }
 
 // GetMulti gets a map for values for multiple keys. If key is not present in session then nil is returned.
-func (s *Store) GetMulti(sess *simplesessions.Session, id string, keys ...string) (map[string]interface{}, error) {
-	// Check if valid session
-	if !s.isValidSessionID(sess, id) {
-		return nil, simplesessions.ErrInvalidSession
+func (s *Store) GetMulti(id string, keys ...string) (map[string]interface{}, error) {
+	if !validateID(id) {
+		return nil, ErrInvalidSession
 	}
 
 	s.mu.RLock()
@@ -101,10 +112,9 @@ func (s *Store) GetMulti(sess *simplesessions.Session, id string, keys ...string
 }
 
 // GetAll gets all fields in session
-func (s *Store) GetAll(sess *simplesessions.Session, id string) (map[string]interface{}, error) {
-	// Check if valid session
-	if !s.isValidSessionID(sess, id) {
-		return nil, simplesessions.ErrInvalidSession
+func (s *Store) GetAll(id string) (map[string]interface{}, error) {
+	if !validateID(id) {
+		return nil, ErrInvalidSession
 	}
 
 	s.mu.RLock()
@@ -115,10 +125,9 @@ func (s *Store) GetAll(sess *simplesessions.Session, id string) (map[string]inte
 }
 
 // Set sets a value to given session but stored only on commit
-func (s *Store) Set(sess *simplesessions.Session, id, key string, val interface{}) error {
-	// Check if valid session
-	if !s.isValidSessionID(sess, id) {
-		return simplesessions.ErrInvalidSession
+func (s *Store) Set(id, key string, val interface{}) error {
+	if !validateID(id) {
+		return ErrInvalidSession
 	}
 
 	s.mu.Lock()
@@ -135,15 +144,14 @@ func (s *Store) Set(sess *simplesessions.Session, id, key string, val interface{
 }
 
 // Commit does nothing here since Set sets the value.
-func (s *Store) Commit(sess *simplesessions.Session, id string) error {
+func (s *Store) Commit(id string) error {
 	return nil
 }
 
 // Delete deletes a key from session.
-func (s *Store) Delete(sess *simplesessions.Session, id string, key string) error {
-	// Check if valid session
-	if !s.isValidSessionID(sess, id) {
-		return simplesessions.ErrInvalidSession
+func (s *Store) Delete(id string, key string) error {
+	if !validateID(id) {
+		return ErrInvalidSession
 	}
 
 	s.mu.Lock()
@@ -161,10 +169,9 @@ func (s *Store) Delete(sess *simplesessions.Session, id string, key string) erro
 }
 
 // Clear clears session in redis.
-func (s *Store) Clear(sess *simplesessions.Session, id string) error {
-	// Check if valid session
-	if !s.isValidSessionID(sess, id) {
-		return simplesessions.ErrInvalidSession
+func (s *Store) Clear(id string) error {
+	if !validateID(id) {
+		return ErrInvalidSession
 	}
 
 	s.mu.Lock()
@@ -186,7 +193,7 @@ func (s *Store) Int(r interface{}, err error) (int, error) {
 
 	v, ok := r.(int)
 	if !ok {
-		err = simplesessions.ErrAssertType
+		err = ErrAssertType
 	}
 
 	return v, err
@@ -200,7 +207,7 @@ func (s *Store) Int64(r interface{}, err error) (int64, error) {
 
 	v, ok := r.(int64)
 	if !ok {
-		err = simplesessions.ErrAssertType
+		err = ErrAssertType
 	}
 
 	return v, err
@@ -214,7 +221,7 @@ func (s *Store) UInt64(r interface{}, err error) (uint64, error) {
 
 	v, ok := r.(uint64)
 	if !ok {
-		err = simplesessions.ErrAssertType
+		err = ErrAssertType
 	}
 
 	return v, err
@@ -228,7 +235,7 @@ func (s *Store) Float64(r interface{}, err error) (float64, error) {
 
 	v, ok := r.(float64)
 	if !ok {
-		err = simplesessions.ErrAssertType
+		err = ErrAssertType
 	}
 
 	return v, err
@@ -242,7 +249,7 @@ func (s *Store) String(r interface{}, err error) (string, error) {
 
 	v, ok := r.(string)
 	if !ok {
-		err = simplesessions.ErrAssertType
+		err = ErrAssertType
 	}
 
 	return v, err
@@ -256,7 +263,7 @@ func (s *Store) Bytes(r interface{}, err error) ([]byte, error) {
 
 	v, ok := r.([]byte)
 	if !ok {
-		err = simplesessions.ErrAssertType
+		err = ErrAssertType
 	}
 
 	return v, err
@@ -270,8 +277,37 @@ func (s *Store) Bool(r interface{}, err error) (bool, error) {
 
 	v, ok := r.(bool)
 	if !ok {
-		err = simplesessions.ErrAssertType
+		err = ErrAssertType
 	}
 
 	return v, err
+}
+
+func validateID(id string) bool {
+	if len(id) != sessionIDLen {
+		return false
+	}
+
+	for _, r := range id {
+		if !unicode.IsDigit(r) && !unicode.IsLetter(r) {
+			return false
+		}
+	}
+
+	return true
+}
+
+// generateID generates a random alpha-num session ID.
+func generateID(n int) (string, error) {
+	const dict = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+	bytes := make([]byte, n)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", err
+	}
+
+	for k, v := range bytes {
+		bytes[k] = dict[v%byte(len(dict))]
+	}
+
+	return string(bytes), nil
 }

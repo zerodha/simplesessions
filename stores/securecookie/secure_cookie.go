@@ -1,15 +1,37 @@
 package securecookie
 
 import (
+	"errors"
 	"sync"
 
 	"github.com/gorilla/securecookie"
-	"github.com/vividvilla/simplesessions"
 )
 
 const (
 	defaultCookieName = "session"
 )
+
+var (
+	// Error codes for store errors. This should match the codes
+	// defined in the /simplesessions package exactly.
+	ErrInvalidSession = &Err{code: 1, msg: "invalid session"}
+	ErrFieldNotFound  = &Err{code: 2, msg: "field not found"}
+	ErrAssertType     = &Err{code: 3, msg: "assertion failed"}
+	ErrNil            = &Err{code: 4, msg: "nil returned"}
+)
+
+type Err struct {
+	code int
+	msg  string
+}
+
+func (e *Err) Error() string {
+	return e.msg
+}
+
+func (e *Err) Code() int {
+	return e.code
+}
 
 // Store represents secure cookie session store
 type Store struct {
@@ -54,7 +76,7 @@ func (s *Store) SetCookieName(cookieName string) {
 }
 
 // IsValid checks if the given cookie value is valid.
-func (s *Store) IsValid(sess *simplesessions.Session, cv string) (bool, error) {
+func (s *Store) IsValid(cv string) (bool, error) {
 	if _, err := s.decode(cv); err != nil {
 		return false, nil
 	}
@@ -63,23 +85,23 @@ func (s *Store) IsValid(sess *simplesessions.Session, cv string) (bool, error) {
 }
 
 // Create creates a new secure cookie session with empty map.
-func (s *Store) Create(sess *simplesessions.Session) (string, error) {
+func (s *Store) Create() (string, error) {
 	// Create empty cookie
 	return s.encode(make(map[string]interface{}))
 }
 
 // Get returns a field value from session
-func (s *Store) Get(sess *simplesessions.Session, cv, key string) (interface{}, error) {
+func (s *Store) Get(cv, key string) (interface{}, error) {
 	// Decode cookie value
 	vals, err := s.decode(cv)
 	if err != nil {
-		return nil, simplesessions.ErrInvalidSession
+		return nil, ErrInvalidSession
 	}
 
 	// Get given field
 	val, ok := vals[key]
 	if !ok {
-		return nil, simplesessions.ErrFieldNotFound
+		return nil, ErrFieldNotFound
 	}
 
 	return val, nil
@@ -87,11 +109,11 @@ func (s *Store) Get(sess *simplesessions.Session, cv, key string) (interface{}, 
 
 // GetMulti returns values for multiple fields in session.
 // If a field is not present then nil is returned.
-func (s *Store) GetMulti(sess *simplesessions.Session, cv string, keys ...string) (map[string]interface{}, error) {
+func (s *Store) GetMulti(cv string, keys ...string) (map[string]interface{}, error) {
 	// Decode cookie value
 	vals, err := s.decode(cv)
 	if err != nil {
-		return nil, simplesessions.ErrInvalidSession
+		return nil, ErrInvalidSession
 	}
 
 	// Get all given fields
@@ -104,17 +126,17 @@ func (s *Store) GetMulti(sess *simplesessions.Session, cv string, keys ...string
 }
 
 // GetAll returns all field for given session.
-func (s *Store) GetAll(sess *simplesessions.Session, cv string) (map[string]interface{}, error) {
+func (s *Store) GetAll(cv string) (map[string]interface{}, error) {
 	vals, err := s.decode(cv)
 	if err != nil {
-		return nil, simplesessions.ErrInvalidSession
+		return nil, ErrInvalidSession
 	}
 
 	return vals, nil
 }
 
 // Set sets a field in session but not saved untill commit is called.
-func (s *Store) Set(sess *simplesessions.Session, cv, key string, val interface{}) error {
+func (s *Store) Set(cv, key string, val interface{}) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -129,77 +151,60 @@ func (s *Store) Set(sess *simplesessions.Session, cv, key string, val interface{
 	return nil
 }
 
-// Commit saves all the field set previously to cookie.
-func (s *Store) Commit(sess *simplesessions.Session, cv string) error {
-	// Decode current cookie
-	vals, err := s.decode(cv)
-	if err != nil {
-		return simplesessions.ErrInvalidSession
-	}
-
-	s.mu.RLock()
-	tempVals, ok := s.tempSetMap[cv]
-	s.mu.RUnlock()
-	if !ok {
-		// Nothing to commit
-		return nil
-	}
-
-	// Assign new fields to current values
-	for k, v := range tempVals {
-		vals[k] = v
-	}
-
-	// Encode new values
-	encoded, err := s.encode(vals)
-	if err != nil {
-		return err
-	}
-
-	// Clear temp map for given session id
-	s.mu.Lock()
-	delete(s.tempSetMap, cv)
-	s.mu.Unlock()
-
-	// Write cookie
-	return sess.WriteCookie(encoded)
+// Commit is unsupported in this store.
+func (s *Store) Commit(cv string) error {
+	return errors.New("Commit() is not supported. Use Flush() to get values and write to cookie externally.")
 }
 
-// Delete deletes a field from session.
-func (s *Store) Delete(sess *simplesessions.Session, cv, key string) error {
+// Flush flushes the 'set' buffer and returns encoded secure cookie value ready to be saved.
+// This value should be written to the cookie externally.
+func (s *Store) Flush(cv string) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	vals, ok := s.tempSetMap[cv]
+	if !ok {
+		return "", nil
+	}
+
+	delete(s.tempSetMap, cv)
+
+	encoded, err := s.encode(vals)
+	return encoded, err
+}
+
+// Delete deletes a field from session. Once called, Flush() should be
+// called to retrieve the updated, unflushed values and written to the cookie
+// externally.
+func (s *Store) Delete(cv, key string) error {
 	// Decode current cookie
 	vals, err := s.decode(cv)
 	if err != nil {
-		return simplesessions.ErrInvalidSession
+		return ErrInvalidSession
 	}
 
-	// Delete given key in current values
+	// Delete given key in current values.
 	delete(vals, key)
 
-	// Encode new values
-	encoded, err := s.encode(vals)
-	if err != nil {
-		return err
+	// Create session map if doesn't exist.
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.tempSetMap[cv]; !ok {
+		s.tempSetMap[cv] = make(map[string]interface{})
 	}
 
-	// Clear temp map for given session id
-	s.mu.Lock()
-	delete(s.tempSetMap, cv)
-	s.mu.Unlock()
+	for k, v := range vals {
+		s.tempSetMap[cv][k] = v
+	}
 
-	// Write new value to cookie
-	return sess.WriteCookie(encoded)
+	// After this, Flush() should be called to obtain the updated encoded
+	// values to be written to the cookie externally.
+	return nil
 }
 
 // Clear clears the session.
-func (s *Store) Clear(sess *simplesessions.Session, id string) error {
-	encoded, err := s.encode(make(map[string]interface{}))
-	if err != nil {
-		return err
-	}
-
-	// Write new value to cookie
-	return sess.WriteCookie(encoded)
+func (s *Store) Clear(cv string) error {
+	return errors.New("Clear() is not supported. Use Create() to create an empty map and write to cookie externally.")
 }
 
 // Int is a helper method to type assert as integer
@@ -210,7 +215,7 @@ func (s *Store) Int(r interface{}, err error) (int, error) {
 
 	v, ok := r.(int)
 	if !ok {
-		err = simplesessions.ErrAssertType
+		err = ErrAssertType
 	}
 
 	return v, err
@@ -224,7 +229,7 @@ func (s *Store) Int64(r interface{}, err error) (int64, error) {
 
 	v, ok := r.(int64)
 	if !ok {
-		err = simplesessions.ErrAssertType
+		err = ErrAssertType
 	}
 
 	return v, err
@@ -238,7 +243,7 @@ func (s *Store) UInt64(r interface{}, err error) (uint64, error) {
 
 	v, ok := r.(uint64)
 	if !ok {
-		err = simplesessions.ErrAssertType
+		err = ErrAssertType
 	}
 
 	return v, err
@@ -252,7 +257,7 @@ func (s *Store) Float64(r interface{}, err error) (float64, error) {
 
 	v, ok := r.(float64)
 	if !ok {
-		err = simplesessions.ErrAssertType
+		err = ErrAssertType
 	}
 
 	return v, err
@@ -266,7 +271,7 @@ func (s *Store) String(r interface{}, err error) (string, error) {
 
 	v, ok := r.(string)
 	if !ok {
-		err = simplesessions.ErrAssertType
+		err = ErrAssertType
 	}
 
 	return v, err
@@ -280,7 +285,7 @@ func (s *Store) Bytes(r interface{}, err error) ([]byte, error) {
 
 	v, ok := r.([]byte)
 	if !ok {
-		err = simplesessions.ErrAssertType
+		err = ErrAssertType
 	}
 
 	return v, err
@@ -294,7 +299,7 @@ func (s *Store) Bool(r interface{}, err error) (bool, error) {
 
 	v, ok := r.(bool)
 	if !ok {
-		err = simplesessions.ErrAssertType
+		err = ErrAssertType
 	}
 
 	return v, err
