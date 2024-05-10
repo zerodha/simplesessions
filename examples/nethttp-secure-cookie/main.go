@@ -5,12 +5,17 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/vividvilla/simplesessions"
-	"github.com/vividvilla/simplesessions/stores/securecookie"
+	"github.com/vividvilla/simplesessions/stores/securecookie/v2"
+	"github.com/vividvilla/simplesessions/v2"
 )
 
 var (
 	sessionManager *simplesessions.Manager
+
+	store = securecookie.New(
+		[]byte("0dIHy6S2uBuKaNnTUszB218L898ikGYA"),
+		[]byte("0dIHy6S2uBuKaNnTUszB218L898ikGYA"),
+	)
 
 	testKey   = "abc123"
 	testValue = 123456
@@ -29,7 +34,16 @@ func setHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err = sess.Commit(); err != nil {
+	// For securecookies, ID() of the session is the encoded cookie
+	// data itself.
+	v, err := store.Flush(sess.ID())
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+
+	// Write the cookie.
+	if err := sess.WriteCookie(v); err != nil {
 		http.Error(w, err.Error(), 500)
 		return
 	}
@@ -71,10 +85,7 @@ func setCookie(cookie *http.Cookie, w interface{}) error {
 
 func main() {
 	sessionManager = simplesessions.New(simplesessions.Options{})
-	sessionManager.UseStore(securecookie.New(
-		[]byte("0dIHy6S2uBuKaNnTUszB218L898ikGYA"),
-		[]byte("0dIHy6S2uBuKaNnTUszB218L898ikGYA"),
-	))
+	sessionManager.UseStore(store)
 
 	sessionManager.RegisterGetCookie(getCookie)
 	sessionManager.RegisterSetCookie(setCookie)
