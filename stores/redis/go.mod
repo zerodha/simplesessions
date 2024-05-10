@@ -1,4 +1,4 @@
-module github.com/vividvilla/simplesessions/stores/redis
+module github.com/vividvilla/simplesessions/stores/redis/v2
 
 go 1.18
 
@@ -6,7 +6,6 @@ require (
 	github.com/alicebob/miniredis/v2 v2.32.1
 	github.com/gomodule/redigo v1.9.2
 	github.com/stretchr/testify v1.9.0
-	github.com/vividvilla/simplesessions v0.2.0
 )
 
 require (

@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/vividvilla/simplesessions"
 )
 
 func TestNew(t *testing.T) {
@@ -16,65 +15,59 @@ func TestNew(t *testing.T) {
 
 func TestIsValidSessionID(t *testing.T) {
 	assert := assert.New(t)
-	str := New()
-	sess := &simplesessions.Session{}
 
 	// Not valid since length doesn't match
 	testString := "abc123"
 	assert.NotEqual(len(testString), sessionIDLen)
-	assert.False(str.isValidSessionID(sess, testString))
+	assert.False(validateID(testString))
 
 	// Not valid since length is same but not alpha numeric
 	invalidTestString := "0dIHy6S2uBuKaNnTUszB218L898ikGY$"
 	assert.Equal(len(invalidTestString), sessionIDLen)
-	assert.False(str.isValidSessionID(sess, invalidTestString))
+	assert.False(validateID(invalidTestString))
 
 	// Valid
 	validTestString := "1dIHy6S2uBuKaNnTUszB218L898ikGY1"
 	assert.Equal(len(validTestString), sessionIDLen)
-	assert.True(str.isValidSessionID(sess, validTestString))
+	assert.True(validateID(validTestString))
 }
 
 func TestIsValid(t *testing.T) {
 	assert := assert.New(t)
-	str := New()
-	sess := &simplesessions.Session{}
 
 	// Not valid since length doesn't match
 	testString := "abc123"
 	assert.NotEqual(len(testString), sessionIDLen)
-	assert.False(str.IsValid(sess, testString))
+	assert.False(validateID(testString))
 
 	// Not valid since length is same but not alpha numeric
 	invalidTestString := "2dIHy6S2uBuKaNnTUszB218L898ikGY$"
 	assert.Equal(len(invalidTestString), sessionIDLen)
-	assert.False(str.IsValid(sess, invalidTestString))
+	assert.False(validateID(invalidTestString))
 
 	// Valid
 	validTestString := "3dIHy6S2uBuKaNnTUszB218L898ikGY1"
 	assert.Equal(len(validTestString), sessionIDLen)
-	assert.True(str.IsValid(sess, validTestString))
+	assert.True(validateID(validTestString))
 }
 
 func TestCreate(t *testing.T) {
 	assert := assert.New(t)
 	str := New()
-	sess := &simplesessions.Session{}
 
-	id, err := str.Create(sess)
+	id, err := str.Create()
 	assert.Nil(err)
 	assert.Equal(len(id), sessionIDLen)
-	assert.True(str.IsValid(sess, id))
+	assert.True(validateID(id))
 }
 
 func TestGetInvalidSessionError(t *testing.T) {
 	assert := assert.New(t)
 	str := New()
-	sess := &simplesessions.Session{}
 
-	val, err := str.Get(sess, "invalidkey", "invalidkey")
+	val, err := str.Get("invalidkey", "invalidkey")
 	assert.Nil(val)
-	assert.Error(err, simplesessions.ErrInvalidSession.Error())
+	assert.Error(err, ErrInvalidSession.Error())
 }
 
 func TestGet(t *testing.T) {
@@ -85,11 +78,11 @@ func TestGet(t *testing.T) {
 
 	// Set a key
 	str := New()
-	sess := &simplesessions.Session{}
+
 	str.sessions[key] = make(map[string]interface{})
 	str.sessions[key][field] = value
 
-	val, err := str.Get(sess, key, field)
+	val, err := str.Get(key, field)
 	assert.NoError(err)
 	assert.Equal(val, value)
 }
@@ -97,31 +90,28 @@ func TestGet(t *testing.T) {
 func TestGetFieldNotFoundError(t *testing.T) {
 	assert := assert.New(t)
 	str := New()
-	sess := &simplesessions.Session{}
 
 	key := "10IHy6S2uBuKaNnTUszB218L898ikGY1"
-	val, err := str.Get(sess, key, "invalidkey")
+	val, err := str.Get(key, "invalidkey")
 	assert.Nil(val)
-	assert.Error(err, simplesessions.ErrFieldNotFound.Error())
+	assert.Error(err, ErrFieldNotFound.Error())
 }
 
 func TestGetMultiInvalidSessionError(t *testing.T) {
 	assert := assert.New(t)
 	str := New()
-	sess := &simplesessions.Session{}
 
-	val, err := str.GetMulti(sess, "invalidkey", "invalidkey")
+	val, err := str.GetMulti("invalidkey", "invalidkey")
 	assert.Nil(val)
-	assert.Error(err, simplesessions.ErrInvalidSession.Error())
+	assert.Error(err, ErrInvalidSession.Error())
 }
 
 func TestGetMultiFieldEmptySession(t *testing.T) {
 	assert := assert.New(t)
 	str := New()
-	sess := &simplesessions.Session{}
 
 	key := "11IHy6S2uBuKaNnTUszB218L898ikGY1"
-	_, err := str.GetMulti(sess, key)
+	_, err := str.GetMulti(key)
 	assert.Nil(err)
 }
 
@@ -136,7 +126,6 @@ func TestGetMulti(t *testing.T) {
 	value3 := 100.10
 
 	str := New()
-	sess := &simplesessions.Session{}
 
 	// Set a key
 	str.sessions[key] = make(map[string]interface{})
@@ -144,7 +133,7 @@ func TestGetMulti(t *testing.T) {
 	str.sessions[key][field2] = value2
 	str.sessions[key][field3] = value3
 
-	vals, err := str.GetMulti(sess, key, field1, field2)
+	vals, err := str.GetMulti(key, field1, field2)
 	assert.NoError(err)
 	assert.Contains(vals, field1)
 	assert.Contains(vals, field2)
@@ -160,11 +149,10 @@ func TestGetMulti(t *testing.T) {
 func TestGetAllInvalidSessionError(t *testing.T) {
 	assert := assert.New(t)
 	str := New()
-	sess := &simplesessions.Session{}
 
-	val, err := str.GetAll(sess, "invalidkey")
+	val, err := str.GetAll("invalidkey")
 	assert.Nil(val)
-	assert.Error(err, simplesessions.ErrInvalidSession.Error())
+	assert.Error(err, ErrInvalidSession.Error())
 }
 
 func TestGetAll(t *testing.T) {
@@ -178,7 +166,6 @@ func TestGetAll(t *testing.T) {
 	value3 := 100.10
 
 	str := New()
-	sess := &simplesessions.Session{}
 
 	// Set a key
 	str.sessions[key] = make(map[string]interface{})
@@ -186,7 +173,7 @@ func TestGetAll(t *testing.T) {
 	str.sessions[key][field2] = value2
 	str.sessions[key][field3] = value3
 
-	vals, err := str.GetAll(sess, key)
+	vals, err := str.GetAll(key)
 	assert.NoError(err)
 	assert.Contains(vals, field1)
 	assert.Contains(vals, field2)
@@ -205,17 +192,15 @@ func TestGetAll(t *testing.T) {
 func TestSetInvalidSessionError(t *testing.T) {
 	assert := assert.New(t)
 	str := New()
-	sess := &simplesessions.Session{}
 
-	err := str.Set(sess, "invalidid", "key", "value")
-	assert.Error(err, simplesessions.ErrInvalidSession.Error())
+	err := str.Set("invalidid", "key", "value")
+	assert.Error(err, ErrInvalidSession.Error())
 }
 
 func TestSet(t *testing.T) {
 	// Test should only set in internal map and not in redis
 	assert := assert.New(t)
 	str := New()
-	sess := &simplesessions.Session{}
 
 	// this key is unique across all tests
 	key := "7dIHy6S2uBuKaNnTUszB218L898ikGY9"
@@ -224,7 +209,7 @@ func TestSet(t *testing.T) {
 
 	assert.NotContains(str.sessions, key)
 
-	err := str.Set(sess, key, field, value)
+	err := str.Set(key, field, value)
 	assert.NoError(err)
 	assert.Contains(str.sessions, key)
 	assert.Contains(str.sessions[key], field)
@@ -234,26 +219,23 @@ func TestSet(t *testing.T) {
 func TestCommit(t *testing.T) {
 	assert := assert.New(t)
 	str := New()
-	sess := &simplesessions.Session{}
 
-	err := str.Commit(sess, "invalidkey")
+	err := str.Commit("invalidkey")
 	assert.Nil(err)
 }
 
 func TestDeleteInvalidSessionError(t *testing.T) {
 	assert := assert.New(t)
 	str := New()
-	sess := &simplesessions.Session{}
 
-	err := str.Delete(sess, "invalidkey", "somekey")
-	assert.Error(err, simplesessions.ErrInvalidSession.Error())
+	err := str.Delete("invalidkey", "somekey")
+	assert.Error(err, ErrInvalidSession.Error())
 }
 
 func TestDelete(t *testing.T) {
 	// Test should only set in internal map and not in redis
 	assert := assert.New(t)
 	str := New()
-	sess := &simplesessions.Session{}
 
 	// this key is unique across all tests
 	key := "8dIHy6S2uBuKaNnTUszB2180898ikGY1"
@@ -263,7 +245,7 @@ func TestDelete(t *testing.T) {
 	str.sessions[key][field1] = 10
 	str.sessions[key][field2] = 10
 
-	err := str.Delete(sess, key, field1)
+	err := str.Delete(key, field1)
 	assert.NoError(err)
 	assert.Contains(str.sessions[key], field2)
 	assert.NotContains(str.sessions[key], field1)
@@ -272,23 +254,21 @@ func TestDelete(t *testing.T) {
 func TestClearInvalidSessionError(t *testing.T) {
 	assert := assert.New(t)
 	str := New()
-	sess := &simplesessions.Session{}
 
-	err := str.Clear(sess, "invalidkey")
-	assert.Error(err, simplesessions.ErrInvalidSession.Error())
+	err := str.Clear("invalidkey")
+	assert.Error(err, ErrInvalidSession.Error())
 }
 
 func TestClear(t *testing.T) {
 	// Test should only set in internal map and not in redis
 	assert := assert.New(t)
 	str := New()
-	sess := &simplesessions.Session{}
 
 	// this key is unique across all tests
 	key := "8dIHy6S2uBuKaNnTUszB2180898ikGY1"
 	str.sessions[key] = make(map[string]interface{})
 
-	err := str.Clear(sess, key)
+	err := str.Clear(key)
 	assert.NoError(err)
 	assert.NotContains(str.sessions, key)
 }
@@ -308,7 +288,7 @@ func TestInt(t *testing.T) {
 	assert.Error(testError)
 
 	_, err = str.Int("string", nil)
-	assert.Error(simplesessions.ErrAssertType)
+	assert.Error(ErrAssertType)
 }
 
 func TestInt64(t *testing.T) {
@@ -325,7 +305,7 @@ func TestInt64(t *testing.T) {
 	assert.Error(testError)
 
 	_, err = str.Int64("string", nil)
-	assert.Error(simplesessions.ErrAssertType)
+	assert.Error(ErrAssertType)
 }
 
 func TestUInt64(t *testing.T) {
@@ -342,7 +322,7 @@ func TestUInt64(t *testing.T) {
 	assert.Error(testError)
 
 	_, err = str.UInt64("string", nil)
-	assert.Error(simplesessions.ErrAssertType)
+	assert.Error(ErrAssertType)
 }
 
 func TestFloat64(t *testing.T) {
@@ -359,7 +339,7 @@ func TestFloat64(t *testing.T) {
 	assert.Error(testError)
 
 	_, err = str.Float64("string", nil)
-	assert.Error(simplesessions.ErrAssertType)
+	assert.Error(ErrAssertType)
 }
 
 func TestString(t *testing.T) {
@@ -376,7 +356,7 @@ func TestString(t *testing.T) {
 	assert.Error(testError)
 
 	_, err = str.String(123, nil)
-	assert.Error(simplesessions.ErrAssertType)
+	assert.Error(ErrAssertType)
 }
 
 func TestBytes(t *testing.T) {
@@ -393,7 +373,7 @@ func TestBytes(t *testing.T) {
 	assert.Error(testError)
 
 	_, err = str.Bytes("string", nil)
-	assert.Error(simplesessions.ErrAssertType)
+	assert.Error(ErrAssertType)
 }
 
 func TestBool(t *testing.T) {
@@ -410,5 +390,5 @@ func TestBool(t *testing.T) {
 	assert.Error(testError)
 
 	_, err = str.Bool("string", nil)
-	assert.Error(simplesessions.ErrAssertType)
+	assert.Error(ErrAssertType)
 }
