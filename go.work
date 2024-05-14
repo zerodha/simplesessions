@@ -1,4 +1,4 @@
-go 1.21
+go 1.14
 
 use (
 	.
@@ -7,4 +7,5 @@ use (
 	./stores/memory
 	./stores/redis
 	./stores/securecookie
+	./stores/postgres
 )
