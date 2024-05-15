@@ -47,7 +47,6 @@ func (e *Err) Code() int {
 type queries struct {
 	create *sql.Stmt
 	get    *sql.Stmt
-	getAll *sql.Stmt
 	update *sql.Stmt
 	delete *sql.Stmt
 	clear  *sql.Stmt
@@ -175,7 +174,7 @@ func (s *Store) GetAll(id string, keys ...string) (map[string]interface{}, error
 	}
 
 	var b []byte
-	err := s.q.getAll.QueryRow(id, s.opt.TTL.Seconds()).Scan(&b)
+	err := s.q.get.QueryRow(id, s.opt.TTL.Seconds()).Scan(&b)
 	if err != nil {
 		return nil, err
 	}
@@ -307,7 +306,7 @@ func (s *Store) Clear(id string) error {
 		return ErrInvalidSession
 	}
 
-	res, err := s.db.Exec(fmt.Sprintf("UPDATE %s SET data = '{}'::JSONB WHERE id=$1", s.opt.Table), id)
+	res, err := s.q.clear.Exec(id)
 	if err != nil {
 		return err
 	}
@@ -337,11 +336,6 @@ func (s *Store) prepareQueries() (*queries, error) {
 	}
 
 	q.get, err = s.db.Prepare(fmt.Sprintf("SELECT data FROM %s WHERE id=$1 AND created_at >= NOW() - INTERVAL '1 second' * $2", s.opt.Table))
-	if err != nil {
-		return nil, err
-	}
-
-	q.getAll, err = s.db.Prepare(fmt.Sprintf("SELECT data FROM %s WHERE id=$1 AND created_at >= NOW() - INTERVAL '1 second' * $2", s.opt.Table))
 	if err != nil {
 		return nil, err
 	}
