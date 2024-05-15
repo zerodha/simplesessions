@@ -9,15 +9,17 @@ Most session libraries are highly opinionated and hard-wired to work with `net/h
 ## Features
 1. Framework/network library agnostic.
 2. Simple API and with support for primitive data types. Complex types can be stored using own encoding/decoding.
-3. Bundled Redis and in-memory stores.
+3. Pre-built redis/postgres/in-memory stores that can be separately installed.
 4. Multiple session instances with custom handlers and different backend stores.
 
 ## Installation
 Install `simplesessions` and all [available stores](/stores).
 
-```
+```shell
 go get -u github.com/vividvilla/simplesessions
-go get -u github.com/vividvilla/simplesessions/stores/...
+
+# Install the requrired store: memory|goredis|redis|postgres
+go get -u github.com/vividvilla/simplesessions/stores/goredis
 ```
 
 # Stores
