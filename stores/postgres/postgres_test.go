@@ -8,13 +8,17 @@ import (
 	"log"
 	"os"
 	"testing"
+	"time"
 
 	_ "github.com/lib/pq"
 	"github.com/stretchr/testify/assert"
 )
 
+const testTable = "sessions"
+
 var (
 	st        *Store
+	db        *sql.DB
 	randID, _ = generateID(sessionIDLen)
 )
 
@@ -26,18 +30,20 @@ func init() {
 
 	p := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
 		os.Getenv("PG_HOST"), os.Getenv("PG_PORT"), os.Getenv("PG_USER"), os.Getenv("PG_PASSWORD"), os.Getenv("PG_DB"))
-	db, err := sql.Open("postgres", p)
-	if err != nil {
+	if d, err := sql.Open("postgres", p); err != nil {
 		log.Fatal(err)
+	} else {
+		db = d
 	}
 
 	if err := db.Ping(); err != nil {
 		log.Fatal(err)
 	}
 
-	st, err = New(Opt{}, db)
-	if err != nil {
+	if s, err := New(Opt{TTL: time.Second * 2, Table: testTable}, db); err != nil {
 		log.Fatal(err)
+	} else {
+		st = s
 	}
 }
 
@@ -118,4 +124,48 @@ func TestSet(t *testing.T) {
 	assert.NoError(t, st.Clear(id))
 	v, err = st.Get(id, "str")
 	assert.Error(t, err, ErrFieldNotFound)
+}
+
+func TestPrune(t *testing.T) {
+	// Create a new session.
+	id, err := st.Create()
+	assert.NoError(t, err)
+	assert.NotEmpty(t, id)
+
+	// Set value.
+	assert.NoError(t, st.Set(id, "str", "hello 123"))
+	assert.NoError(t, st.Commit(id))
+
+	// Get value and verify.
+	v, err := st.Get(id, "str")
+	assert.NoError(t, err)
+	assert.Equal(t, v, "hello 123")
+
+	// Wait until the 2 sec TTL expires and run prune.
+	time.Sleep(time.Second * 3)
+
+	// Session shouldn't be returned.
+	_, err = st.Get(id, "str")
+	assert.ErrorIs(t, err, ErrInvalidSession)
+
+	// Create one more session and immediately run prune. Except for this,
+	// all previous sessions should be gone.
+	id, err = st.Create()
+	assert.NoError(t, err)
+	assert.NoError(t, st.Set(id, "str", "hello 123"))
+	assert.NoError(t, st.Commit(id))
+
+	// Run prune. All previously created sessions should be gone.
+	assert.NoError(t, st.Prune())
+
+	var num int
+	err = db.QueryRow(fmt.Sprintf("SELECT COUNT(*) FROM %s", testTable)).Scan(&num)
+	assert.NoError(t, err)
+	assert.Equal(t, num, 1)
+
+	// The last created session shouldn't have been pruned.
+	v, err = st.Get(id, "str")
+	assert.NoError(t, err)
+	assert.Equal(t, v, "hello 123")
+
 }

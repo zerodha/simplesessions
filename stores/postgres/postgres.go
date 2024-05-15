@@ -50,6 +50,7 @@ type queries struct {
 	update *sql.Stmt
 	delete *sql.Stmt
 	clear  *sql.Stmt
+	prune  *sql.Stmt
 }
 
 // Store represents redis session store for simple sessions.
@@ -128,6 +129,9 @@ func (s *Store) Get(id, key string) (interface{}, error) {
 	// preserving the types.
 	var b []byte
 	if err := s.q.get.QueryRow(id, s.opt.TTL.Seconds()).Scan(&b); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, ErrInvalidSession
+		}
 		return nil, err
 	}
 
@@ -324,6 +328,13 @@ func (s *Store) Clear(id string) error {
 	return nil
 }
 
+// Prune deletes rows that have exceeded the TTL. This should be run externally periodically (ideally as a separate goroutine)
+// at desired intervals, hourly/daily etc. based on the expected volume of sessions.
+func (s *Store) Prune() error {
+	_, err := s.q.prune.Exec(s.opt.TTL.Seconds())
+	return err
+}
+
 func (s *Store) prepareQueries() (*queries, error) {
 	var (
 		q   = &queries{}
@@ -351,6 +362,11 @@ func (s *Store) prepareQueries() (*queries, error) {
 	}
 
 	q.clear, err = s.db.Prepare(fmt.Sprintf("UPDATE %s SET data = '{}'::JSONB WHERE id=$1", s.opt.Table))
+	if err != nil {
+		return nil, err
+	}
+
+	q.prune, err = s.db.Prepare(fmt.Sprintf("DELETE FROM %s WHERE created_at <= NOW() - INTERVAL '1 second' * $1", s.opt.Table))
 	if err != nil {
 		return nil, err
 	}
