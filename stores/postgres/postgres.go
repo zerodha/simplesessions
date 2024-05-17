@@ -172,7 +172,7 @@ func (s *Store) GetMulti(id string, keys ...string) (map[string]interface{}, err
 }
 
 // GetAll returns the map of all keys in the session.
-func (s *Store) GetAll(id string, keys ...string) (map[string]interface{}, error) {
+func (s *Store) GetAll(id string) (map[string]interface{}, error) {
 	if !validateID(id) {
 		return nil, ErrInvalidSession
 	}
