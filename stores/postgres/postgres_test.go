@@ -63,6 +63,7 @@ func TestSet(t *testing.T) {
 	assert.NotEmpty(t, id)
 
 	assert.NoError(t, st.Set(id, "num", 123))
+	assert.NoError(t, st.Set(id, "float", 12.3))
 	assert.NoError(t, st.Set(id, "str", "hello 123"))
 	assert.NoError(t, st.Set(id, "bool", true))
 
@@ -81,13 +82,59 @@ func TestSet(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, v, float64(123))
 
-	v, err = st.Get(id, "str")
-	assert.NoError(t, err)
-	assert.Equal(t, v, "hello 123")
+	{
+		v, err := st.Int(st.Get(id, "num"))
+		assert.NoError(t, err)
+		assert.Equal(t, v, int(123))
+	}
 
-	v, err = st.Get(id, "bool")
-	assert.NoError(t, err)
-	assert.Equal(t, v, true)
+	{
+		v, err := st.Int64(st.Get(id, "num"))
+		assert.NoError(t, err)
+		assert.Equal(t, v, int64(123))
+	}
+
+	{
+		v, err := st.UInt64(st.Get(id, "num"))
+		assert.NoError(t, err)
+		assert.Equal(t, v, uint64(123))
+	}
+
+	{
+		v, err := st.Float64(st.Get(id, "float"))
+		assert.NoError(t, err)
+		assert.Equal(t, v, float64(12.3))
+	}
+
+	{
+		v, err := st.String(st.Get(id, "str"))
+		assert.NoError(t, err)
+		assert.Equal(t, v, "hello 123")
+	}
+
+	{
+		v, err := st.Bytes(st.Get(id, "str"))
+		assert.NoError(t, err)
+		assert.Equal(t, v, []byte("hello 123"))
+	}
+
+	{
+		v, err := st.Bool(st.Get(id, "bool"))
+		assert.NoError(t, err)
+		assert.Equal(t, v, true)
+	}
+
+	{
+		v, err := st.Get(id, "str")
+		assert.NoError(t, err)
+		assert.Equal(t, v, "hello 123")
+	}
+
+	{
+		v, err := st.Get(id, "bool")
+		assert.NoError(t, err)
+		assert.Equal(t, v, true)
+	}
 
 	// Non-existent field.
 	_, err = st.Get(id, "xx")

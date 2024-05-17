@@ -328,6 +328,104 @@ func (s *Store) Clear(id string) error {
 	return nil
 }
 
+// Int is a helper method to type assert as integer.
+func (s *Store) Int(r interface{}, err error) (int, error) {
+	if err != nil {
+		return 0, err
+	}
+
+	v, ok := r.(float64)
+	if !ok {
+		return 0, ErrAssertType
+	}
+
+	return int(v), err
+}
+
+// Int64 is a helper method to type assert as Int64
+func (s *Store) Int64(r interface{}, err error) (int64, error) {
+	if err != nil {
+		return 0, err
+	}
+
+	v, ok := r.(float64)
+	if !ok {
+		return 0, ErrAssertType
+	}
+
+	return int64(v), err
+}
+
+// UInt64 is a helper method to type assert as UInt64
+func (s *Store) UInt64(r interface{}, err error) (uint64, error) {
+	if err != nil {
+		return 0, err
+	}
+
+	v, ok := r.(float64)
+	if !ok {
+		return 0, ErrAssertType
+	}
+
+	return uint64(v), err
+}
+
+// Float64 is a helper method to type assert as Float64
+func (s *Store) Float64(r interface{}, err error) (float64, error) {
+	if err != nil {
+		return 0, err
+	}
+
+	v, ok := r.(float64)
+	if !ok {
+		return 0, ErrAssertType
+	}
+
+	return v, err
+}
+
+// String is a helper method to type assert as String
+func (s *Store) String(r interface{}, err error) (string, error) {
+	if err != nil {
+		return "", err
+	}
+
+	v, ok := r.(string)
+	if !ok {
+		return "", ErrAssertType
+	}
+
+	return v, err
+}
+
+// Bytes is a helper method to type assert as Bytes
+func (s *Store) Bytes(r interface{}, err error) ([]byte, error) {
+	if err != nil {
+		return nil, err
+	}
+
+	v, ok := r.(string)
+	if !ok {
+		return nil, ErrAssertType
+	}
+
+	return []byte(v), err
+}
+
+// Bool is a helper method to type assert as Bool
+func (s *Store) Bool(r interface{}, err error) (bool, error) {
+	if err != nil {
+		return false, err
+	}
+
+	v, ok := r.(bool)
+	if !ok {
+		return false, ErrAssertType
+	}
+
+	return v, nil
+}
+
 // Prune deletes rows that have exceeded the TTL. This should be run externally periodically (ideally as a separate goroutine)
 // at desired intervals, hourly/daily etc. based on the expected volume of sessions.
 func (s *Store) Prune() error {
