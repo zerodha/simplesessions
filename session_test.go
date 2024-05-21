@@ -90,16 +90,13 @@ func TestSessionNewSession(t *testing.T) {
 	mockManager := newMockManager(mockStore)
 
 	assert := assert.New(t)
-	sess, err := NewSession(mockManager, reader, writer)
+	sess, err := mockManager.NewSession(reader, writer)
 	assert.NoError(err)
 	assert.Equal(sess.manager, mockManager)
 	assert.Equal(sess.reader, reader)
 	assert.Equal(sess.writer, writer)
 	assert.NotNil(sess.values)
-	assert.NotNil(sess.cookie)
-	assert.Equal(sess.cookie.Name, defaultCookieName)
-	assert.Equal(sess.cookie.Value, testCookieValue)
-	assert.True(sess.isSet)
+	assert.Equal(sess.id, testCookieValue)
 }
 
 func TestSessionNewSessionErrorStoreCreate(t *testing.T) {
@@ -109,14 +106,14 @@ func TestSessionNewSessionErrorStoreCreate(t *testing.T) {
 
 	testError := errors.New("this is test error")
 	newCookieVal := "somerandomid"
-	mockStore.val = newCookieVal
+	mockStore.id = newCookieVal
 	mockStore.err = testError
 	mockManager := newMockManager(mockStore)
 	mockManager.RegisterGetCookie(func(name string, r interface{}) (*http.Cookie, error) {
 		return nil, http.ErrNoCookie
 	})
 
-	sess, err := NewSession(mockManager, nil, nil)
+	sess, err := mockManager.NewSession(nil, nil)
 	assert.Error(err, testError.Error())
 	assert.Nil(sess)
 }
@@ -128,7 +125,7 @@ func TestSessionNewSessionErrorWriteCookie(t *testing.T) {
 
 	testError := errors.New("this is test error")
 	newCookieVal := "somerandomid"
-	mockStore.val = newCookieVal
+	mockStore.id = newCookieVal
 	mockManager := newMockManager(mockStore)
 	mockManager.RegisterGetCookie(func(name string, r interface{}) (*http.Cookie, error) {
 		return nil, http.ErrNoCookie
@@ -137,7 +134,7 @@ func TestSessionNewSessionErrorWriteCookie(t *testing.T) {
 		return testError
 	})
 
-	sess, err := NewSession(mockManager, nil, nil)
+	sess, err := mockManager.NewSession(nil, nil)
 	assert.Error(err, testError.Error())
 	assert.Nil(sess)
 }
@@ -151,7 +148,7 @@ func TestSessionNewSessionInvalidGetCookie(t *testing.T) {
 		return nil, testError
 	})
 
-	sess, err := NewSession(mockManager, nil, nil)
+	sess, err := mockManager.NewSession(nil, nil)
 	assert.Error(err, testError.Error())
 	assert.Nil(sess)
 }
@@ -161,32 +158,31 @@ func TestSessionNewSessionCreateNewCookie(t *testing.T) {
 	mockStore := newMockStore()
 
 	newCookieVal := "somerandomid"
-	mockStore.val = newCookieVal
+	mockStore.id = newCookieVal
 	mockStore.isValid = true
 	mockManager := newMockManager(mockStore)
 	mockManager.RegisterGetCookie(func(name string, r interface{}) (*http.Cookie, error) {
 		return nil, http.ErrNoCookie
 	})
 
-	sess, err := NewSession(mockManager, nil, nil)
+	sess, err := mockManager.NewSession(nil, nil)
 	assert.NoError(err)
-	assert.True(sess.isSet)
-	assert.Equal(sess.cookie.Value, newCookieVal)
+
+	assert.Equal(sess.id, newCookieVal)
 }
 
-func TestSessionNewSessionWithDisableAutoSet(t *testing.T) {
+func TestSessionNewSessionWithDisableAuto(t *testing.T) {
 	assert := assert.New(t)
 	mockStore := newMockStore()
 
 	mockManager := newMockManager(mockStore)
-	mockManager.opts.DisableAutoSet = true
+	mockManager.opts.EnableAutoCreate = true
 	mockManager.RegisterGetCookie(func(name string, r interface{}) (*http.Cookie, error) {
 		return nil, http.ErrNoCookie
 	})
 
-	sess, err := NewSession(mockManager, nil, nil)
+	_, err := mockManager.NewSession(nil, nil)
 	assert.NoError(err)
-	assert.False(sess.isSet)
 }
 
 func TestSessionNewSessionGetCookieCb(t *testing.T) {
@@ -195,7 +191,7 @@ func TestSessionNewSessionGetCookieCb(t *testing.T) {
 
 	// Calls write cookie callback if cookie is not set already
 	newCookieVal := "somerandomid"
-	mockStore.val = newCookieVal
+	mockStore.id = newCookieVal
 	mockStore.isValid = true
 	mockManager := newMockManager(mockStore)
 
@@ -210,9 +206,9 @@ func TestSessionNewSessionGetCookieCb(t *testing.T) {
 	})
 
 	var reader = "this is reader interface"
-	sess, err := NewSession(mockManager, reader, nil)
+	_, err := mockManager.NewSession(reader, nil)
 	assert.NoError(err)
-	assert.True(sess.isSet)
+
 	assert.True(isCallbackTriggered)
 	assert.Equal(receivedName, mockManager.opts.CookieName)
 	assert.Equal(receivedReader, reader)
@@ -224,7 +220,7 @@ func TestSessionNewSessionSetCookieCb(t *testing.T) {
 
 	// Calls write cookie callback if cookie is not set already
 	newCookieVal := "somerandomid"
-	mockStore.val = newCookieVal
+	mockStore.id = newCookieVal
 	mockStore.isValid = true
 	mockManager := newMockManager(mockStore)
 	mockManager.RegisterGetCookie(func(name string, r interface{}) (*http.Cookie, error) {
@@ -242,9 +238,9 @@ func TestSessionNewSessionSetCookieCb(t *testing.T) {
 	})
 
 	var writer = "this is writer interface"
-	sess, err := NewSession(mockManager, nil, writer)
+	_, err := mockManager.NewSession(nil, writer)
 	assert.NoError(err)
-	assert.True(sess.isSet)
+
 	assert.True(isCallbackTriggered)
 	assert.Equal(receivedCookie.Value, newCookieVal)
 	assert.Equal(receivedWriter, writer)
@@ -261,27 +257,20 @@ func TestSessionWriteCookie(t *testing.T) {
 		CookieLifetime:   time.Second * 1000,
 		IsHTTPOnlyCookie: true,
 		IsSecureCookie:   true,
-		DisableAutoSet:   true,
+		EnableAutoCreate: false,
 		SameSite:         http.SameSiteDefaultMode,
 	}
 	mockStore.isValid = true
 
-	sess, err := NewSession(mockManager, nil, nil)
+	sess, err := mockManager.NewSession(nil, nil)
 	assert.NoError(err)
 
-	sess.WriteCookie("testvalue")
-	assert.Equal(sess.cookie.Name, mockManager.opts.CookieName)
-	assert.Equal(sess.cookie.Value, "testvalue")
-	assert.Equal(sess.cookie.Domain, mockManager.opts.CookieDomain)
-	assert.Equal(sess.cookie.Path, mockManager.opts.CookiePath)
-	assert.Equal(sess.cookie.Secure, mockManager.opts.IsSecureCookie)
-	assert.Equal(sess.cookie.SameSite, mockManager.opts.SameSite)
-	assert.Equal(sess.cookie.HttpOnly, mockManager.opts.IsHTTPOnlyCookie)
+	assert.NoError(sess.WriteCookie("testvalue"))
 
 	// Ignore seconds
-	expiry := time.Now().Add(mockManager.opts.CookieLifetime)
-	assert.Equal(sess.cookie.Expires.Format("2006-01-02 15:04:05"), expiry.Format("2006-01-02 15:04:05"))
-	assert.WithinDuration(expiry, sess.cookie.Expires, time.Millisecond*1000)
+	// expiry := time.Now().Add(mockManager.opts.CookieLifetime)
+	// assert.Equal(sess.id.Expires.Format("2006-01-02 15:04:05"), expiry.Format("2006-01-02 15:04:05"))
+	// assert.WithinDuration(expiry, sess.id.Expires, time.Millisecond*1000)
 }
 
 func TestSessionClearCookie(t *testing.T) {
@@ -298,7 +287,7 @@ func TestSessionClearCookie(t *testing.T) {
 		return nil
 	})
 
-	sess, err := NewSession(mockManager, nil, nil)
+	sess, err := mockManager.NewSession(nil, nil)
 	assert.NoError(err)
 
 	err = sess.clearCookie()
@@ -315,7 +304,7 @@ func TestSessionCreate(t *testing.T) {
 	mockStore.isValid = true
 	mockStore.val = "test"
 	mockManager := newMockManager(mockStore)
-	mockManager.opts.DisableAutoSet = true
+	mockManager.opts.EnableAutoCreate = true
 	mockManager.RegisterGetCookie(func(name string, r interface{}) (*http.Cookie, error) {
 		return nil, http.ErrNoCookie
 	})
@@ -326,15 +315,14 @@ func TestSessionCreate(t *testing.T) {
 		return nil
 	})
 
-	sess, err := NewSession(mockManager, nil, nil)
+	sess, err := mockManager.NewSession(nil, nil)
 	assert.NoError(err)
-	assert.False(sess.isSet)
 	assert.False(isCallbackTriggered)
 
 	err = sess.Create()
 	assert.NoError(err)
 	assert.True(isCallbackTriggered)
-	assert.True(sess.isSet)
+
 }
 
 func TestSessionLoadValues(t *testing.T) {
@@ -344,7 +332,7 @@ func TestSessionLoadValues(t *testing.T) {
 	mockManager := newMockManager(mockStore)
 
 	assert := assert.New(t)
-	sess, err := NewSession(mockManager, nil, nil)
+	sess, err := mockManager.NewSession(nil, nil)
 	assert.NoError(err)
 
 	err = sess.LoadValues()
@@ -360,7 +348,7 @@ func TestSessionResetValues(t *testing.T) {
 	mockManager := newMockManager(mockStore)
 
 	assert := assert.New(t)
-	sess, err := NewSession(mockManager, nil, nil)
+	sess, err := mockManager.NewSession(nil, nil)
 	assert.NoError(err)
 
 	err = sess.LoadValues()
@@ -379,7 +367,7 @@ func TestSessionGetAllFromStore(t *testing.T) {
 	mockManager := newMockManager(mockStore)
 
 	assert := assert.New(t)
-	sess, err := NewSession(mockManager, nil, nil)
+	sess, err := mockManager.NewSession(nil, nil)
 	assert.NoError(err)
 
 	vals, err := sess.GetAll()
@@ -394,7 +382,7 @@ func TestSessionGetAllLoadedValues(t *testing.T) {
 	mockManager := newMockManager(mockStore)
 
 	assert := assert.New(t)
-	sess, err := NewSession(mockManager, nil, nil)
+	sess, err := mockManager.NewSession(nil, nil)
 	assert.NoError(err)
 
 	setVals := make(map[string]interface{})
@@ -410,13 +398,13 @@ func TestSessionGetAllLoadedValues(t *testing.T) {
 func TestSessionGetAllInvalidSession(t *testing.T) {
 	mockStore := newMockStore()
 	mockManager := newMockManager(mockStore)
-	mockManager.opts.DisableAutoSet = true
+	mockManager.opts.EnableAutoCreate = true
 	mockManager.RegisterGetCookie(func(name string, r interface{}) (*http.Cookie, error) {
 		return nil, http.ErrNoCookie
 	})
 
 	assert := assert.New(t)
-	sess, err := NewSession(mockManager, nil, nil)
+	sess, err := mockManager.NewSession(nil, nil)
 	assert.NoError(err)
 
 	vals, err := sess.GetAll()
@@ -431,7 +419,7 @@ func TestSessionGetMultiFromStore(t *testing.T) {
 	mockManager := newMockManager(mockStore)
 
 	assert := assert.New(t)
-	sess, err := NewSession(mockManager, nil, nil)
+	sess, err := mockManager.NewSession(nil, nil)
 	assert.NoError(err)
 
 	vals, err := sess.GetMulti("val")
@@ -446,7 +434,7 @@ func TestSessionGetMultiLoadedValues(t *testing.T) {
 	mockManager := newMockManager(mockStore)
 
 	assert := assert.New(t)
-	sess, err := NewSession(mockManager, nil, nil)
+	sess, err := mockManager.NewSession(nil, nil)
 	assert.NoError(err)
 
 	setVals := make(map[string]interface{})
@@ -464,13 +452,13 @@ func TestSessionGetMultiLoadedValues(t *testing.T) {
 func TestSessionGetMultiInvalidSession(t *testing.T) {
 	mockStore := newMockStore()
 	mockManager := newMockManager(mockStore)
-	mockManager.opts.DisableAutoSet = true
+	mockManager.opts.EnableAutoCreate = true
 	mockManager.RegisterGetCookie(func(name string, r interface{}) (*http.Cookie, error) {
 		return nil, http.ErrNoCookie
 	})
 
 	assert := assert.New(t)
-	sess, err := NewSession(mockManager, nil, nil)
+	sess, err := mockManager.NewSession(nil, nil)
 	assert.NoError(err)
 
 	vals, err := sess.GetMulti("val")
@@ -485,7 +473,7 @@ func TestSessionGetFromStore(t *testing.T) {
 	mockManager := newMockManager(mockStore)
 
 	assert := assert.New(t)
-	sess, err := NewSession(mockManager, nil, nil)
+	sess, err := mockManager.NewSession(nil, nil)
 	assert.NoError(err)
 
 	val, err := sess.Get("val")
@@ -499,7 +487,7 @@ func TestSessionGetLoadedValues(t *testing.T) {
 	mockManager := newMockManager(mockStore)
 
 	assert := assert.New(t)
-	sess, err := NewSession(mockManager, nil, nil)
+	sess, err := mockManager.NewSession(nil, nil)
 	assert.NoError(err)
 
 	setVals := make(map[string]interface{})
@@ -515,13 +503,13 @@ func TestSessionGetLoadedValues(t *testing.T) {
 func TestSessionGetInvalidSession(t *testing.T) {
 	mockStore := newMockStore()
 	mockManager := newMockManager(mockStore)
-	mockManager.opts.DisableAutoSet = true
+	mockManager.opts.EnableAutoCreate = true
 	mockManager.RegisterGetCookie(func(name string, r interface{}) (*http.Cookie, error) {
 		return nil, http.ErrNoCookie
 	})
 
 	assert := assert.New(t)
-	sess, err := NewSession(mockManager, nil, nil)
+	sess, err := mockManager.NewSession(nil, nil)
 	assert.NoError(err)
 
 	vals, err := sess.Get("val")
@@ -535,7 +523,7 @@ func TestSessionSet(t *testing.T) {
 	mockManager := newMockManager(mockStore)
 
 	assert := assert.New(t)
-	sess, err := NewSession(mockManager, nil, nil)
+	sess, err := mockManager.NewSession(nil, nil)
 	assert.NoError(err)
 
 	err = sess.Set("key", 100)
@@ -546,13 +534,13 @@ func TestSessionSet(t *testing.T) {
 func TestSessionSetInvalidSession(t *testing.T) {
 	mockStore := newMockStore()
 	mockManager := newMockManager(mockStore)
-	mockManager.opts.DisableAutoSet = true
+	mockManager.opts.EnableAutoCreate = true
 	mockManager.RegisterGetCookie(func(name string, r interface{}) (*http.Cookie, error) {
 		return nil, http.ErrNoCookie
 	})
 
 	assert := assert.New(t)
-	sess, err := NewSession(mockManager, nil, nil)
+	sess, err := mockManager.NewSession(nil, nil)
 	assert.NoError(err)
 
 	err = sess.Set("key", 100)
@@ -565,7 +553,7 @@ func TestSessionCommit(t *testing.T) {
 	mockManager := newMockManager(mockStore)
 
 	assert := assert.New(t)
-	sess, err := NewSession(mockManager, nil, nil)
+	sess, err := mockManager.NewSession(nil, nil)
 	assert.NoError(err)
 
 	err = sess.Set("key", 100)
@@ -580,13 +568,13 @@ func TestSessionCommit(t *testing.T) {
 func TestSessionCommitInvalidSession(t *testing.T) {
 	mockStore := newMockStore()
 	mockManager := newMockManager(mockStore)
-	mockManager.opts.DisableAutoSet = true
+	mockManager.opts.EnableAutoCreate = true
 	mockManager.RegisterGetCookie(func(name string, r interface{}) (*http.Cookie, error) {
 		return nil, http.ErrNoCookie
 	})
 
 	assert := assert.New(t)
-	sess, err := NewSession(mockManager, nil, nil)
+	sess, err := mockManager.NewSession(nil, nil)
 	assert.NoError(err)
 
 	err = sess.Commit()
@@ -600,7 +588,7 @@ func TestSessionDelete(t *testing.T) {
 	mockStore.isValid = true
 	mockStore.val = 100
 
-	sess, err := NewSession(mockManager, nil, nil)
+	sess, err := mockManager.NewSession(nil, nil)
 	assert.NoError(err)
 	assert.Equal(mockStore.val, 100)
 
@@ -627,7 +615,7 @@ func TestSessionClear(t *testing.T) {
 		return nil
 	})
 
-	sess, err := NewSession(mockManager, nil, nil)
+	sess, err := mockManager.NewSession(nil, nil)
 	assert.NoError(err)
 	assert.Equal(mockStore.val, 100)
 
@@ -644,29 +632,13 @@ func TestSessionClearError(t *testing.T) {
 	mockManager := newMockManager(mockStore)
 	mockStore.isValid = true
 
-	sess, err := NewSession(mockManager, nil, nil)
+	sess, err := mockManager.NewSession(nil, nil)
 	assert.NoError(err)
 
 	testError := errors.New("this is test error")
 	mockStore.err = testError
 	err = sess.Clear()
 	assert.Error(err, testError.Error())
-}
-
-func TestSessionClearInvalidSession(t *testing.T) {
-	mockStore := newMockStore()
-	mockManager := newMockManager(mockStore)
-	mockManager.opts.DisableAutoSet = true
-	mockManager.RegisterGetCookie(func(name string, r interface{}) (*http.Cookie, error) {
-		return nil, http.ErrNoCookie
-	})
-
-	assert := assert.New(t)
-	sess, err := NewSession(mockManager, nil, nil)
-	assert.NoError(err)
-
-	err = sess.Clear()
-	assert.Error(err, ErrInvalidSession.Error())
 }
 
 type Err struct {

@@ -21,7 +21,7 @@ func TestNewManagerWithDefaultOptions(t *testing.T) {
 
 func TestManagerNewManagerWithOptions(t *testing.T) {
 	opts := Options{
-		DisableAutoSet:   true,
+		EnableAutoCreate: true,
 		CookieName:       "testcookiename",
 		CookieDomain:     "somedomain",
 		CookiePath:       "/abc/123",
@@ -36,7 +36,7 @@ func TestManagerNewManagerWithOptions(t *testing.T) {
 	assert := assert.New(t)
 
 	// Default cookie path is set to root
-	assert.Equal(m.opts.DisableAutoSet, opts.DisableAutoSet)
+	assert.Equal(m.opts.EnableAutoCreate, opts.EnableAutoCreate)
 	assert.Equal(m.opts.CookieName, opts.CookieName)
 	assert.Equal(m.opts.CookieDomain, opts.CookieDomain)
 	assert.Equal(m.opts.CookiePath, opts.CookiePath)
@@ -60,12 +60,12 @@ func TestManagerRegisterGetCookie(t *testing.T) {
 	assert := assert.New(t)
 	m := New(Options{})
 
-	testCookie := &http.Cookie{
+	ck := &http.Cookie{
 		Name: "testcookie",
 	}
 
 	cb := func(string, interface{}) (*http.Cookie, error) {
-		return testCookie, http.ErrNoCookie
+		return ck, http.ErrNoCookie
 	}
 
 	m.RegisterGetCookie(cb)
@@ -81,7 +81,7 @@ func TestManagerRegisterSetCookie(t *testing.T) {
 	assert := assert.New(t)
 	m := New(Options{})
 
-	testCookie := &http.Cookie{
+	ck := &http.Cookie{
 		Name: "testcookie",
 	}
 
@@ -91,15 +91,15 @@ func TestManagerRegisterSetCookie(t *testing.T) {
 
 	m.RegisterSetCookie(cb)
 
-	expectCbErr := cb(testCookie, nil)
-	actualCbErr := m.setCookieCb(testCookie, nil)
+	expectCbErr := cb(ck, nil)
+	actualCbErr := m.setCookieCb(ck, nil)
 
 	assert.Equal(expectCbErr, actualCbErr)
 }
 
 func TestManagerAcquireFails(t *testing.T) {
 	assert := assert.New(t)
-	m := New(Options{})
+	m := New(Options{EnableAutoCreate: false})
 
 	_, err := m.Acquire(nil, nil, nil)
 	assert.Error(err, "session store is not set")
@@ -108,32 +108,60 @@ func TestManagerAcquireFails(t *testing.T) {
 	_, err = m.Acquire(nil, nil, nil)
 	assert.Error(err, "callback `GetCookie` not set")
 
-	getCb := func(string, interface{}) (*http.Cookie, error) {
+	m.RegisterGetCookie(func(string, interface{}) (*http.Cookie, error) {
 		return nil, nil
-	}
-	m.RegisterGetCookie(getCb)
-	_, err = m.Acquire(nil, nil, nil)
-	assert.Error(err, "callback `SetCookie` not set")
-}
-
-func TestManagerAcquireSucceeds(t *testing.T) {
-	m := New(Options{})
-	m.UseStore(&MockStore{
-		isValid: true,
 	})
 
-	getCb := func(string, interface{}) (*http.Cookie, error) {
+	_, err = m.Acquire(nil, nil, nil)
+	assert.Error(err, "callback `SetCookie` not set")
+
+	m.RegisterSetCookie(func(*http.Cookie, interface{}) error {
+		return nil
+	})
+	_, err = m.Acquire(nil, nil, nil)
+	assert.ErrorIs(err, ErrInvalidSession)
+}
+
+func TestManagerAcquireNoAutocreate(t *testing.T) {
+	m := New(Options{EnableAutoCreate: false})
+	m.UseStore(&MockStore{
+		isValid: true,
+		id:      "somerandomid",
+	})
+
+	m.RegisterGetCookie(func(string, interface{}) (*http.Cookie, error) {
+		return &http.Cookie{
+			Name:  "testcookie",
+			Value: "somerandomid",
+		}, nil
+	})
+
+	m.RegisterSetCookie(func(*http.Cookie, interface{}) error {
+		return nil
+	})
+
+	_, err := m.Acquire(nil, nil, nil)
+	assert := assert.New(t)
+	assert.NoError(err)
+}
+
+func TestManagerAcquireAutocreate(t *testing.T) {
+	m := New(Options{EnableAutoCreate: true})
+	m.UseStore(&MockStore{
+		isValid: true,
+		id:      "somerandomid",
+	})
+
+	m.RegisterGetCookie(func(string, interface{}) (*http.Cookie, error) {
 		return &http.Cookie{
 			Name:  "testcookie",
 			Value: "",
 		}, nil
-	}
-	m.RegisterGetCookie(getCb)
+	})
 
-	setCb := func(*http.Cookie, interface{}) error {
-		return http.ErrNoCookie
-	}
-	m.RegisterSetCookie(setCb)
+	m.RegisterSetCookie(func(*http.Cookie, interface{}) error {
+		return nil
+	})
 
 	_, err := m.Acquire(nil, nil, nil)
 	assert := assert.New(t)
@@ -142,9 +170,10 @@ func TestManagerAcquireSucceeds(t *testing.T) {
 
 func TestManagerAcquireFromContext(t *testing.T) {
 	assert := assert.New(t)
-	m := New(Options{})
+	m := New(Options{EnableAutoCreate: true})
 	m.UseStore(&MockStore{
 		isValid: true,
+		id:      "somerandomid",
 	})
 
 	getCb := func(string, interface{}) (*http.Cookie, error) {
@@ -156,20 +185,20 @@ func TestManagerAcquireFromContext(t *testing.T) {
 	m.RegisterGetCookie(getCb)
 
 	setCb := func(*http.Cookie, interface{}) error {
-		return http.ErrNoCookie
+		return nil
 	}
 	m.RegisterSetCookie(setCb)
 
 	sess, err := m.Acquire(nil, nil, nil)
 	assert.NoError(err)
-	sess.cookie.Value = "updated"
+	sess.id = "updated"
 
 	sessNew, err := m.Acquire(nil, nil, nil)
 	assert.NoError(err)
-	assert.NotEqual(sessNew.cookie.Value, sess.cookie.Value)
+	assert.NotEqual(sessNew.id, sess.id)
 
 	ctx := context.Background()
 	ctx = context.WithValue(ctx, ContextName, sess)
 	sessNext, err := m.Acquire(nil, nil, ctx)
-	assert.Equal(sessNext.cookie.Value, sess.cookie.Value)
+	assert.Equal(sessNext.id, sess.id)
 }

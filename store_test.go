@@ -5,6 +5,7 @@ type MockStore struct {
 	isValid     bool
 	cookieValue string
 	err         error
+	id          string
 	val         interface{}
 	isCommited  bool
 }
@@ -18,7 +19,7 @@ func (s *MockStore) reset() {
 }
 
 func (s *MockStore) Create() (cv string, err error) {
-	return s.val.(string), s.err
+	return s.id, s.err
 }
 
 func (s *MockStore) Get(cv, key string) (value interface{}, err error) {

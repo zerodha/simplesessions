@@ -15,18 +15,13 @@ type Session struct {
 	// Session manager.
 	manager *Manager
 
-	// Current http cookie. This is passed down to `SetCookie` callback.
-	cookie *http.Cookie
+	// Session ID.
+	id string
 
 	// HTTP reader and writer interfaces which are passed on to
 	// `GetCookie`` and `SetCookie`` callback respectively.
 	reader interface{}
 	writer interface{}
-
-	// Track if session is set in store or not
-	// used to throw and error is autoSet is not enabled and user
-	// explicitly didn't create new session in store.
-	isSet bool
 }
 
 var (
@@ -52,60 +47,10 @@ type errCode interface {
 	Code() int
 }
 
-// NewSession creates a new session. Reads cookie info from `GetCookie“ callback
-// and validate the session with current store. If cookie not set then it creates
-// new session and calls `SetCookie“ callback. If `DisableAutoSet` is set then it
-// skips new session creation and should be manually done using `Create` method.
-// If a cookie is found but its invalid in store then `ErrInvalidSession` error is returned.
-func NewSession(m *Manager, r, w interface{}) (*Session, error) {
-	var (
-		err  error
-		sess = &Session{
-			manager: m,
-			reader:  r,
-			writer:  w,
-			values:  make(map[string]interface{}),
-		}
-	)
-
-	// Get existing http session cookie
-	sess.cookie, err = m.getCookieCb(m.opts.CookieName, r)
-
-	// Create new session
-	if err == http.ErrNoCookie {
-		// Skip creating new cookie in store. User has to manually create before doing Get or Set.
-		if m.opts.DisableAutoSet {
-			return sess, nil
-		}
-
-		// Create new cookie in store and write to front
-		// Store also calls `WriteCookie`` to write to http interface
-		cv, err := m.store.Create()
-		if err != nil {
-			return nil, errAs(err)
-		}
-
-		// Write cookie
-		if err := sess.WriteCookie(cv); err != nil {
-			return nil, err
-		}
-
-		// Set isSet flag
-		sess.isSet = true
-	} else if err != nil {
-		return nil, err
-	}
-
-	// Set isSet flag
-	sess.isSet = true
-
-	return sess, nil
-}
-
 // WriteCookie updates the cookie and calls `SetCookie` callback.
 // This method can also be used by store to update cookie whenever the cookie value changes.
 func (s *Session) WriteCookie(cv string) error {
-	s.cookie = &http.Cookie{
+	ck := &http.Cookie{
 		Value:    cv,
 		Name:     s.manager.opts.CookieName,
 		Domain:   s.manager.opts.CookieDomain,
@@ -115,18 +60,13 @@ func (s *Session) WriteCookie(cv string) error {
 		SameSite: s.manager.opts.SameSite,
 	}
 
-	// Set cookie expiry
-	if s.manager.opts.CookieLifetime != 0 {
-		s.cookie.Expires = time.Now().Add(s.manager.opts.CookieLifetime)
-	}
-
 	// Call `SetCookie` callback to write cookie to response
-	return s.manager.setCookieCb(s.cookie, s.writer)
+	return s.manager.setCookieCb(ck, s.writer)
 }
 
 // clearCookie sets expiry of the cookie to one day before to clear it.
 func (s *Session) clearCookie() error {
-	s.cookie = &http.Cookie{
+	ck := &http.Cookie{
 		Name:  s.manager.opts.CookieName,
 		Value: "",
 		// Set expiry to previous date to clear it from browser
@@ -134,7 +74,7 @@ func (s *Session) clearCookie() error {
 	}
 
 	// Call `SetCookie` callback to write cookie to response
-	return s.manager.setCookieCb(s.cookie, s.writer)
+	return s.manager.setCookieCb(ck, s.writer)
 }
 
 // Create a new session. This is implicit when option `DisableAutoSet` is false
@@ -151,18 +91,12 @@ func (s *Session) Create() error {
 		return err
 	}
 
-	// Set isSet flag
-	s.isSet = true
-
 	return nil
 }
 
 // ID returns the acquired session ID. If cookie is not set then empty string is returned.
 func (s *Session) ID() string {
-	if s.cookie != nil {
-		return s.cookie.Value
-	}
-	return ""
+	return s.id
 }
 
 // LoadValues loads the session values in memory.
@@ -181,27 +115,17 @@ func (s *Session) ResetValues() {
 
 // GetAll gets all the fields in the session.
 func (s *Session) GetAll() (map[string]interface{}, error) {
-	// Check if session is set before accessing it
-	if !s.isSet {
-		return nil, ErrInvalidSession
-	}
-
 	// Load value from map if its already loaded
 	if len(s.values) > 0 {
 		return s.values, nil
 	}
 
-	out, err := s.manager.store.GetAll(s.cookie.Value)
+	out, err := s.manager.store.GetAll(s.id)
 	return out, errAs(err)
 }
 
 // GetMulti gets a map of values for multiple session keys.
 func (s *Session) GetMulti(keys ...string) (map[string]interface{}, error) {
-	// Check if session is set before accessing it
-	if !s.isSet {
-		return nil, ErrInvalidSession
-	}
-
 	// Load values from map if its already loaded
 	if len(s.values) > 0 {
 		vals := make(map[string]interface{})
@@ -214,7 +138,7 @@ func (s *Session) GetMulti(keys ...string) (map[string]interface{}, error) {
 		return vals, nil
 	}
 
-	out, err := s.manager.store.GetMulti(s.cookie.Value, keys...)
+	out, err := s.manager.store.GetMulti(s.id, keys...)
 	return out, errAs(err)
 }
 
@@ -222,11 +146,6 @@ func (s *Session) GetMulti(keys ...string) (map[string]interface{}, error) {
 // If session is already loaded using `Load` then returns values from
 // existing map instead of getting it from store.
 func (s *Session) Get(key string) (interface{}, error) {
-	// Check if session is set before accessing it
-	if !s.isSet {
-		return nil, ErrInvalidSession
-	}
-
 	// Load value from map if its already loaded
 	if len(s.values) > 0 {
 		if val, ok := s.values[key]; ok {
@@ -235,19 +154,14 @@ func (s *Session) Get(key string) (interface{}, error) {
 	}
 
 	// Get from backend if not found in previous step
-	out, err := s.manager.store.Get(s.cookie.Value, key)
+	out, err := s.manager.store.Get(s.id, key)
 	return out, errAs(err)
 }
 
 // Set sets a value for given key in session. Its up to store to commit
 // all previously set values at once or store it on each set.
 func (s *Session) Set(key string, val interface{}) error {
-	// Check if session is set before accessing it
-	if !s.isSet {
-		return ErrInvalidSession
-	}
-
-	err := s.manager.store.Set(s.cookie.Value, key, val)
+	err := s.manager.store.Set(s.id, key, val)
 	return errAs(err)
 }
 
@@ -255,13 +169,8 @@ func (s *Session) Set(key string, val interface{}) error {
 // Its up to store to commit all previously
 // set values at once or store it on each set.
 func (s *Session) SetMulti(values map[string]interface{}) error {
-	// Check if session is set before accessing it
-	if !s.isSet {
-		return ErrInvalidSession
-	}
-
 	for k, v := range values {
-		if err := s.manager.store.Set(s.cookie.Value, k, v); err != nil {
+		if err := s.manager.store.Set(s.id, k, v); err != nil {
 			return errAs(err)
 		}
 	}
@@ -272,12 +181,7 @@ func (s *Session) SetMulti(values map[string]interface{}) error {
 // Commit commits all set to store. Its up to store to commit
 // all previously set values at once or store it on each set.
 func (s *Session) Commit() error {
-	// Check if session is set before accessing it
-	if !s.isSet {
-		return ErrInvalidSession
-	}
-
-	if err := s.manager.store.Commit(s.cookie.Value); err != nil {
+	if err := s.manager.store.Commit(s.id); err != nil {
 		return errAs(err)
 	}
 
@@ -286,12 +190,7 @@ func (s *Session) Commit() error {
 
 // Delete deletes a field from session.
 func (s *Session) Delete(key string) error {
-	// Check if session is set before accessing it
-	if !s.isSet {
-		return ErrInvalidSession
-	}
-
-	if err := s.manager.store.Delete(s.cookie.Value, key); err != nil {
+	if err := s.manager.store.Delete(s.id, key); err != nil {
 		return errAs(err)
 	}
 
@@ -300,12 +199,7 @@ func (s *Session) Delete(key string) error {
 
 // Clear clears session data from store and clears the cookie
 func (s *Session) Clear() error {
-	// Check if session is set before accessing it
-	if !s.isSet {
-		return ErrInvalidSession
-	}
-
-	if err := s.manager.store.Clear(s.cookie.Value); err != nil {
+	if err := s.manager.store.Clear(s.id); err != nil {
 		return errAs(err)
 	}
 

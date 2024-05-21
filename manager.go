@@ -32,8 +32,8 @@ type Manager struct {
 
 // Options are available options to configure Manager.
 type Options struct {
-	// DisableAutoSet skips creation of session cookie in frontend and new session in store if session is not already set.
-	DisableAutoSet bool
+	// If enabled, Acquire() will always create and return a new session if one doesn't already exist.
+	EnableAutoCreate bool
 
 	// CookieName sets http cookie name. This is also sent as cookie name in `GetCookie` callback.
 	CookieName string
@@ -94,6 +94,36 @@ func (m *Manager) RegisterSetCookie(cb func(*http.Cookie, interface{}) error) {
 	m.setCookieCb = cb
 }
 
+// NewSession creates a new session. Reads cookie info from `GetCookie“ callback
+// and validate the session with current store. If cookie not set then it creates
+// new session and calls `SetCookie“ callback. If `DisableAutoSet` is set then it
+// skips new session creation and should be manually done using `Create` method.
+// If a cookie is found but its invalid in store then `ErrInvalidSession` error is returned.
+func (m *Manager) NewSession(r, w interface{}) (*Session, error) {
+	var (
+		sess = &Session{
+			manager: m,
+			reader:  r,
+			writer:  w,
+			values:  make(map[string]interface{}),
+		}
+	)
+
+	// Create new cookie in store and write to front.
+	// Store also calls `WriteCookie`` to write to http interface.
+	id, err := m.store.Create()
+	if err != nil {
+		return nil, errAs(err)
+	}
+
+	// Write cookie.
+	if err := sess.WriteCookie(id); err != nil {
+		return nil, err
+	}
+
+	return sess, nil
+}
+
 // Acquire gets a `Session` for current session cookie from store.
 // If `Session` is not found on store then it creates a new session and sets on store.
 // If 'DisableAutoSet` is set in options then session has to be explicitly created before
@@ -124,5 +154,24 @@ func (m *Manager) Acquire(r, w interface{}, c context.Context) (*Session, error)
 		}
 	}
 
-	return NewSession(m, r, w)
+	// Get existing HTTP session cookie.
+	// If there's no error and there's a session ID (unvalidated at this point),
+	// return a session object.
+	ck, err := m.getCookieCb(m.opts.CookieName, r)
+	if err == nil && ck != nil && ck.Value != "" {
+		return &Session{
+			manager: m,
+			reader:  r,
+			writer:  w,
+			id:      ck.Value,
+			values:  make(map[string]interface{}),
+		}, nil
+	}
+
+	// If auto-creation is disabled, return an error.
+	if !m.opts.EnableAutoCreate {
+		return nil, ErrInvalidSession
+	}
+
+	return m.NewSession(r, w)
 }
