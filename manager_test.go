@@ -9,14 +9,44 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+const mockSessionID = "sometestcookievalue"
+
+func newMockStore() *MockStore {
+	return &MockStore{
+		id:   mockSessionID,
+		data: map[string]interface{}{},
+		temp: map[string]interface{}{},
+		err:  nil,
+	}
+}
+
+func newMockManager(store *MockStore) *Manager {
+	m := New(Options{})
+	m.UseStore(store)
+	m.RegisterGetCookie(mockGetCookieCb)
+	m.RegisterSetCookie(mockSetCookieCb)
+	return m
+}
+
+func mockGetCookieCb(name string, r interface{}) (*http.Cookie, error) {
+	return &http.Cookie{
+		Name:  name,
+		Value: mockSessionID,
+	}, nil
+}
+
+func mockSetCookieCb(*http.Cookie, interface{}) error {
+	return nil
+}
+
 func TestNewManagerWithDefaultOptions(t *testing.T) {
 	m := New(Options{})
 
 	assert := assert.New(t)
 	// Default cookie path is set to root
-	assert.Equal(m.opts.CookiePath, "/")
+	assert.Equal("/", m.opts.CookiePath)
 	// Default cookie name is set
-	assert.Equal(m.opts.CookieName, defaultCookieName)
+	assert.Equal(defaultCookieName, m.opts.CookieName)
 }
 
 func TestManagerNewManagerWithOptions(t *testing.T) {
@@ -36,24 +66,21 @@ func TestManagerNewManagerWithOptions(t *testing.T) {
 	assert := assert.New(t)
 
 	// Default cookie path is set to root
-	assert.Equal(m.opts.EnableAutoCreate, opts.EnableAutoCreate)
-	assert.Equal(m.opts.CookieName, opts.CookieName)
-	assert.Equal(m.opts.CookieDomain, opts.CookieDomain)
-	assert.Equal(m.opts.CookiePath, opts.CookiePath)
-	assert.Equal(m.opts.IsSecureCookie, opts.IsSecureCookie)
-	assert.Equal(m.opts.SameSite, opts.SameSite)
-	assert.Equal(m.opts.IsHTTPOnlyCookie, opts.IsHTTPOnlyCookie)
-	assert.Equal(m.opts.CookieLifetime, opts.CookieLifetime)
+	assert.Equal(opts.EnableAutoCreate, m.opts.EnableAutoCreate)
+	assert.Equal(opts.CookieName, m.opts.CookieName)
+	assert.Equal(opts.CookieDomain, m.opts.CookieDomain)
+	assert.Equal(opts.CookiePath, m.opts.CookiePath)
+	assert.Equal(opts.IsSecureCookie, m.opts.IsSecureCookie)
+	assert.Equal(opts.SameSite, m.opts.SameSite)
+	assert.Equal(opts.IsHTTPOnlyCookie, m.opts.IsHTTPOnlyCookie)
+	assert.Equal(opts.CookieLifetime, m.opts.CookieLifetime)
 }
 
 func TestManagerUseStore(t *testing.T) {
 	assert := assert.New(t)
-	mockStr := &MockStore{}
-	assert.Implements((*Store)(nil), mockStr)
-
-	m := New(Options{})
-	m.UseStore(mockStr)
-	assert.Equal(m.store, mockStr)
+	s := newMockStore()
+	m := newMockManager(s)
+	assert.Equal(s, m.store)
 }
 
 func TestManagerRegisterGetCookie(t *testing.T) {
@@ -99,106 +126,63 @@ func TestManagerRegisterSetCookie(t *testing.T) {
 
 func TestManagerAcquireFails(t *testing.T) {
 	assert := assert.New(t)
-	m := New(Options{EnableAutoCreate: false})
+	m := New(Options{})
 
-	_, err := m.Acquire(nil, nil, nil)
-	assert.Error(err, "session store is not set")
+	// Fail if store is not assigned.
+	_, err := m.Acquire(context.Background(), nil, nil)
+	assert.Equal("session store is not set", err.Error())
 
+	// Fail if getCookie callback is not assigned.
 	m.UseStore(&MockStore{})
-	_, err = m.Acquire(nil, nil, nil)
-	assert.Error(err, "callback `GetCookie` not set")
+	_, err = m.Acquire(context.Background(), nil, nil)
+	assert.Equal("callback `GetCookie` not set", err.Error())
 
+	// Assign getCookie, returns nil cookie to make sure it
+	// fails in create session with invalid session.
 	m.RegisterGetCookie(func(string, interface{}) (*http.Cookie, error) {
 		return nil, nil
 	})
 
-	_, err = m.Acquire(nil, nil, nil)
-	assert.Error(err, "callback `SetCookie` not set")
+	// Fail if setCookie callback is not assigned.
+	_, err = m.Acquire(context.Background(), nil, nil)
+	assert.Equal("callback `SetCookie` not set", err.Error())
 
+	// Register setCookie callback.
 	m.RegisterSetCookie(func(*http.Cookie, interface{}) error {
 		return nil
 	})
-	_, err = m.Acquire(nil, nil, nil)
+
+	// By default EnableAutoCreate is disabled
+	// Check if it returns invalid session.
+	_, err = m.Acquire(context.Background(), nil, nil)
 	assert.ErrorIs(err, ErrInvalidSession)
 }
 
-func TestManagerAcquireNoAutocreate(t *testing.T) {
-	m := New(Options{EnableAutoCreate: false})
-	m.UseStore(&MockStore{
-		isValid: true,
-		id:      "somerandomid",
-	})
-
-	m.RegisterGetCookie(func(string, interface{}) (*http.Cookie, error) {
-		return &http.Cookie{
-			Name:  "testcookie",
-			Value: "somerandomid",
-		}, nil
-	})
-
-	m.RegisterSetCookie(func(*http.Cookie, interface{}) error {
-		return nil
-	})
-
-	_, err := m.Acquire(nil, nil, nil)
-	assert := assert.New(t)
-	assert.NoError(err)
-}
-
 func TestManagerAcquireAutocreate(t *testing.T) {
-	m := New(Options{EnableAutoCreate: true})
-	m.UseStore(&MockStore{
-		isValid: true,
-		id:      "somerandomid",
-	})
-
+	m := newMockManager(newMockStore())
+	// Enable autocreate.
+	m.opts.EnableAutoCreate = true
 	m.RegisterGetCookie(func(string, interface{}) (*http.Cookie, error) {
-		return &http.Cookie{
-			Name:  "testcookie",
-			Value: "",
-		}, nil
+		return nil, ErrInvalidSession
 	})
 
-	m.RegisterSetCookie(func(*http.Cookie, interface{}) error {
-		return nil
-	})
-
-	_, err := m.Acquire(nil, nil, nil)
+	// If cookie doesn't exist then should return a new one without error.
+	sess, err := m.Acquire(context.Background(), nil, nil)
 	assert := assert.New(t)
 	assert.NoError(err)
+	assert.Equal(mockSessionID, sess.id)
 }
 
 func TestManagerAcquireFromContext(t *testing.T) {
 	assert := assert.New(t)
-	m := New(Options{EnableAutoCreate: true})
-	m.UseStore(&MockStore{
-		isValid: true,
-		id:      "somerandomid",
-	})
+	m := newMockManager(newMockStore())
 
-	getCb := func(string, interface{}) (*http.Cookie, error) {
-		return &http.Cookie{
-			Name:  "testcookie",
-			Value: "",
-		}, nil
-	}
-	m.RegisterGetCookie(getCb)
-
-	setCb := func(*http.Cookie, interface{}) error {
-		return nil
-	}
-	m.RegisterSetCookie(setCb)
-
-	sess, err := m.Acquire(nil, nil, nil)
-	assert.NoError(err)
+	sess, err := m.Acquire(context.Background(), nil, nil)
 	sess.id = "updated"
-
-	sessNew, err := m.Acquire(nil, nil, nil)
 	assert.NoError(err)
-	assert.NotEqual(sessNew.id, sess.id)
 
-	ctx := context.Background()
-	ctx = context.WithValue(ctx, ContextName, sess)
-	sessNext, err := m.Acquire(nil, nil, ctx)
-	assert.Equal(sessNext.id, sess.id)
+	ctx := context.WithValue(context.Background(), ContextName, sess)
+	sessNext, err := m.Acquire(ctx, nil, nil)
+	assert.Equal(sess.id, sessNext.id)
+	assert.NoError(err)
 }

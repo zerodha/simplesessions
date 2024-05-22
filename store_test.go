@@ -2,20 +2,10 @@ package simplesessions
 
 // MockStore mocks the store for testing
 type MockStore struct {
-	isValid     bool
-	cookieValue string
-	err         error
-	id          string
-	val         interface{}
-	isCommited  bool
-}
-
-func (s *MockStore) reset() {
-	s.isValid = false
-	s.cookieValue = ""
-	s.err = nil
-	s.val = nil
-	s.isCommited = false
+	err  error
+	id   string
+	data map[string]interface{}
+	temp map[string]interface{}
 }
 
 func (s *MockStore) Create() (cv string, err error) {
@@ -23,38 +13,85 @@ func (s *MockStore) Create() (cv string, err error) {
 }
 
 func (s *MockStore) Get(cv, key string) (value interface{}, err error) {
-	return s.val, s.err
+	if s.id == "" {
+		return nil, ErrInvalidSession
+	}
+
+	d, ok := s.data[key]
+	if !ok {
+		return nil, ErrFieldNotFound
+	}
+
+	return d, s.err
 }
 
 func (s *MockStore) GetMulti(cv string, keys ...string) (values map[string]interface{}, err error) {
-	vals := make(map[string]interface{})
-	vals["val"] = s.val
-	return vals, s.err
+	if s.id == "" {
+		return nil, ErrInvalidSession
+	}
+
+	out := make(map[string]interface{})
+	for _, key := range keys {
+		v, err := s.Get(cv, key)
+		if err != nil {
+			if err == ErrFieldNotFound {
+				v = nil
+			} else {
+				return nil, err
+			}
+		}
+		out[key] = v
+	}
+
+	return out, s.err
 }
 
 func (s *MockStore) GetAll(cv string) (values map[string]interface{}, err error) {
-	vals := make(map[string]interface{})
-	vals["val"] = s.val
-	return vals, s.err
+	if s.id == "" {
+		return nil, ErrInvalidSession
+	}
+
+	return s.data, s.err
 }
 
 func (s *MockStore) Set(cv, key string, value interface{}) error {
-	s.val = value
+	if s.id == "" {
+		return ErrInvalidSession
+	}
+
+	s.temp[key] = value
 	return s.err
 }
 
 func (s *MockStore) Commit(cv string) error {
-	s.isCommited = true
+	if s.id == "" {
+		return ErrInvalidSession
+	}
+
+	for key, val := range s.temp {
+		s.data[key] = val
+	}
+	s.temp = map[string]interface{}{}
+
 	return s.err
 }
 
 func (s *MockStore) Delete(cv string, key string) error {
-	s.val = nil
+	if s.id == "" {
+		return ErrInvalidSession
+	}
+	s.temp = nil
+	delete(s.data, key)
+	delete(s.temp, key)
 	return s.err
 }
 
 func (s *MockStore) Clear(cv string) error {
-	s.val = nil
+	if s.id == "" {
+		return ErrInvalidSession
+	}
+	s.data = map[string]interface{}{}
+	s.temp = map[string]interface{}{}
 	return s.err
 }
 

@@ -7,12 +7,14 @@ import (
 	"time"
 )
 
+type ctxNameType string
+
 const (
 	// Default cookie name used to store session.
 	defaultCookieName = "session"
 
 	// ContextName is the key used to store session in context passed to acquire method.
-	ContextName = "_simple_session"
+	ContextName ctxNameType = "_simple_session"
 )
 
 // Manager is a utility to scaffold session and store.
@@ -94,20 +96,16 @@ func (m *Manager) RegisterSetCookie(cb func(*http.Cookie, interface{}) error) {
 	m.setCookieCb = cb
 }
 
-// NewSession creates a new session. Reads cookie info from `GetCookie“ callback
-// and validate the session with current store. If cookie not set then it creates
-// new session and calls `SetCookie“ callback. If `DisableAutoSet` is set then it
-// skips new session creation and should be manually done using `Create` method.
-// If a cookie is found but its invalid in store then `ErrInvalidSession` error is returned.
+// NewSession creates a new session.
 func (m *Manager) NewSession(r, w interface{}) (*Session, error) {
-	var (
-		sess = &Session{
-			manager: m,
-			reader:  r,
-			writer:  w,
-			values:  make(map[string]interface{}),
-		}
-	)
+	// Check if any store is set
+	if m.store == nil {
+		return nil, fmt.Errorf("session store is not set")
+	}
+
+	if m.setCookieCb == nil {
+		return nil, fmt.Errorf("callback `SetCookie` not set")
+	}
 
 	// Create new cookie in store and write to front.
 	// Store also calls `WriteCookie`` to write to http interface.
@@ -116,6 +114,13 @@ func (m *Manager) NewSession(r, w interface{}) (*Session, error) {
 		return nil, errAs(err)
 	}
 
+	var sess = &Session{
+		id:      id,
+		manager: m,
+		reader:  r,
+		writer:  w,
+		values:  make(map[string]interface{}),
+	}
 	// Write cookie.
 	if err := sess.WriteCookie(id); err != nil {
 		return nil, err
@@ -125,14 +130,15 @@ func (m *Manager) NewSession(r, w interface{}) (*Session, error) {
 }
 
 // Acquire gets a `Session` for current session cookie from store.
-// If `Session` is not found on store then it creates a new session and sets on store.
-// If 'DisableAutoSet` is set in options then session has to be explicitly created before
-// using `Session` for getting or setting.
+// If `Session` is not found and `opt.EnableAutoCreate` option is true then
+// then it creates a new session and sets on store.
+// If `Session` is not found and `opt.EnableAutoCreate` option is false then
+// then it returns ErrInvalidSession.
 // `r` and `w` is request and response interfaces which are sent back in GetCookie and SetCookie callbacks respectively.
 // In case of net/http `r` will be r`
 // Optionally context can be passed around which is used to get already loaded session. This is useful when
 // handler is wrapped with multiple middlewares and `Acquire` is already called in any of the middleware.
-func (m *Manager) Acquire(r, w interface{}, c context.Context) (*Session, error) {
+func (m *Manager) Acquire(c context.Context, r, w interface{}) (*Session, error) {
 	// Check if any store is set
 	if m.store == nil {
 		return nil, fmt.Errorf("session store is not set")
