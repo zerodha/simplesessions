@@ -17,7 +17,7 @@ const (
 	ContextName ctxNameType = "_simple_session"
 )
 
-// Manager is a utility to scaffold session and store.
+// Manager handles the storage and management of HTTP cookies.
 type Manager struct {
 	// Store to be used.
 	store Store
@@ -35,6 +35,7 @@ type Manager struct {
 // Options are available options to configure Manager.
 type Options struct {
 	// If enabled, Acquire() will always create and return a new session if one doesn't already exist.
+	// If disabled then new session can only be created using NewSession() method.
 	EnableAutoCreate bool
 
 	// CookieName sets http cookie name. This is also sent as cookie name in `GetCookie` callback.
@@ -84,19 +85,18 @@ func (m *Manager) UseStore(str Store) {
 	m.store = str
 }
 
-// RegisterGetCookie sets a callback to get http cookie from any reader interface which
-// is sent on session acquisition using `Acquire` method.
+// RegisterGetCookie sets a callback to retrieve an HTTP cookie during session acquisition.
 func (m *Manager) RegisterGetCookie(cb func(string, interface{}) (*http.Cookie, error)) {
 	m.getCookieCb = cb
 }
 
-// RegisterSetCookie sets a callback to set cookie from http writer interface which
-// is sent on session acquisition using `Acquire` method.
+// RegisterSetCookie sets a callback to set an HTTP cookie during session acquisition.
 func (m *Manager) RegisterSetCookie(cb func(*http.Cookie, interface{}) error) {
 	m.setCookieCb = cb
 }
 
-// NewSession creates a new session.
+// NewSession creates a new `Session` and updates the cookie with a new session ID,
+// replacing any existing session ID if it exists.
 func (m *Manager) NewSession(r, w interface{}) (*Session, error) {
 	// Check if any store is set
 	if m.store == nil {
@@ -129,15 +129,11 @@ func (m *Manager) NewSession(r, w interface{}) (*Session, error) {
 	return sess, nil
 }
 
-// Acquire gets a `Session` for current session cookie from store.
-// If `Session` is not found and `opt.EnableAutoCreate` option is true then
-// then it creates a new session and sets on store.
-// If `Session` is not found and `opt.EnableAutoCreate` option is false then
-// then it returns ErrInvalidSession.
-// `r` and `w` is request and response interfaces which are sent back in GetCookie and SetCookie callbacks respectively.
-// In case of net/http `r` will be r`
-// Optionally context can be passed around which is used to get already loaded session. This is useful when
-// handler is wrapped with multiple middlewares and `Acquire` is already called in any of the middleware.
+// Acquire retrieves a `Session` from the store using the current session cookie.
+// If not found and `opt.EnableAutoCreate` is true, a new session is created and stored.
+// If not found and `opt.EnableAutoCreate` is false which is the default, it returns ErrInvalidSession.
+// `r` and `w` are request and response interfaces which is passed back in in GetCookie and SetCookie callbacks.
+// Optionally, a context can be passed to get an already loaded session, useful in middleware chains.
 func (m *Manager) Acquire(c context.Context, r, w interface{}) (*Session, error) {
 	// Check if any store is set
 	if m.store == nil {

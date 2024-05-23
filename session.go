@@ -6,10 +6,10 @@ import (
 	"time"
 )
 
-// Session is utility for get, set or clear session.
+// Session provides the object to get, set, or clear session data.
 type Session struct {
-	// Map to store session data which can be loaded using `Load` method.
-	// Get session method check if the field is available here before getting from store directly.
+	// Map to store session data, loaded using `LoadValues` method.
+	// All `Get` methods checks here before fetching from the store.
 	values map[string]interface{}
 
 	// Session manager.
@@ -19,7 +19,7 @@ type Session struct {
 	id string
 
 	// HTTP reader and writer interfaces which are passed on to
-	// `GetCookie`` and `SetCookie`` callback respectively.
+	// `GetCookie`` and `SetCookie`` callbacks.
 	reader interface{}
 	writer interface{}
 }
@@ -47,11 +47,11 @@ type errCode interface {
 	Code() int
 }
 
-// WriteCookie updates the cookie and calls `SetCookie` callback.
-// This method can also be used by store to update cookie whenever the cookie value changes.
-func (s *Session) WriteCookie(cv string) error {
+// WriteCookie creates a cookie with the given session ID and parameters,
+// then calls the `SetCookie` callback. This can be used to update the cookie externally.
+func (s *Session) WriteCookie(id string) error {
 	ck := &http.Cookie{
-		Value:    cv,
+		Value:    id,
 		Name:     s.manager.opts.CookieName,
 		Domain:   s.manager.opts.CookieDomain,
 		Path:     s.manager.opts.CookiePath,
@@ -64,7 +64,7 @@ func (s *Session) WriteCookie(cv string) error {
 	return s.manager.setCookieCb(ck, s.writer)
 }
 
-// clearCookie sets expiry of the cookie to one day before to clear it.
+// clearCookie sets the cookie's expiry to one day prior to clear it.
 func (s *Session) clearCookie() error {
 	ck := &http.Cookie{
 		Name:  s.manager.opts.CookieName,
@@ -82,23 +82,25 @@ func (s *Session) ID() string {
 	return s.id
 }
 
-// LoadValues loads the session values in memory.
-// Get session field tries to get value from memory before hitting store.
+// LoadValues loads session values into memory for quick access.
+// Ideal for centralized session fetching, e.g., in middleware.
+// Subsequent Get/GetMulti calls return cached values, avoiding store access.
+// Use ResetValues() to ensure GetAll/Get/GetMulti fetches from the store.
+// Set/SetMulti/Clear do not update the values, so this method must be called again for any changes.
 func (s *Session) LoadValues() error {
 	var err error
 	s.values, err = s.GetAll()
 	return err
 }
 
-// ResetValues reset the loaded values using `LoadValues` method.ResetValues
-// Subsequent Get, GetAll and GetMulti
+// ResetValues clears loaded values, ensuring subsequent Get, GetAll, and GetMulti calls fetch from the store.
 func (s *Session) ResetValues() {
 	s.values = make(map[string]interface{})
 }
 
-// GetAll gets all the fields in the session.
+// GetAll gets all the fields for the given session id.
 func (s *Session) GetAll() (map[string]interface{}, error) {
-	// Load value from map if its already loaded
+	// Load value from map if its already loaded.
 	if len(s.values) > 0 {
 		return s.values, nil
 	}
@@ -107,7 +109,8 @@ func (s *Session) GetAll() (map[string]interface{}, error) {
 	return out, errAs(err)
 }
 
-// GetMulti gets a map of values for multiple session keys.
+// GetMulti retrieves values for multiple session fields.
+// If a field is not found in the store then its returned as nil.
 func (s *Session) GetMulti(keys ...string) (map[string]interface{}, error) {
 	// Load values from map if its already loaded
 	if len(s.values) > 0 {
@@ -125,49 +128,47 @@ func (s *Session) GetMulti(keys ...string) (map[string]interface{}, error) {
 	return out, errAs(err)
 }
 
-// Get gets a value for given key in session.
-// If session is already loaded using `Load` then returns values from
-// existing map instead of getting it from store.
+// Get retrieves a value for the given key in the session.
+// If the session is already loaded, it returns the value from the existing map.
+// Otherwise, it fetches the value from the store.
 func (s *Session) Get(key string) (interface{}, error) {
-	// Load value from map if its already loaded
+	// Return value from map if already loaded.
 	if len(s.values) > 0 {
 		if val, ok := s.values[key]; ok {
 			return val, nil
 		}
 	}
 
-	// Get from backend if not found in previous step
+	// Fetch from store if not found in the map.
 	out, err := s.manager.store.Get(s.id, key)
 	return out, errAs(err)
 }
 
-// Set sets a value for given key in session. Its up to store to commit
-// all previously set values at once or store it on each set.
+// Set assigns a value to the given key in the session.
+// The store determines whether to commit all values at once or store them individually.
+// Use Commit() method to commit all values if the store doesn't immediately persist them.
 func (s *Session) Set(key string, val interface{}) error {
 	err := s.manager.store.Set(s.id, key, val)
 	return errAs(err)
 }
 
-// SetMulti sets all values in the session.
-// Its up to store to commit all previously
-// set values at once or store it on each set.
+// SetMulti assigns multiple values to the session.
+// The store determines whether to commit all values at once or store them individually.
 func (s *Session) SetMulti(values map[string]interface{}) error {
 	for k, v := range values {
 		if err := s.manager.store.Set(s.id, k, v); err != nil {
 			return errAs(err)
 		}
 	}
-
 	return nil
 }
 
-// Commit commits all set to store. Its up to store to commit
-// all previously set values at once or store it on each set.
+// Commit persists all values to the store.
+// The store determines whether to commit all values at once or store them individually.
 func (s *Session) Commit() error {
 	if err := s.manager.store.Commit(s.id); err != nil {
 		return errAs(err)
 	}
-
 	return nil
 }
 
@@ -176,7 +177,6 @@ func (s *Session) Delete(key string) error {
 	if err := s.manager.store.Delete(s.id, key); err != nil {
 		return errAs(err)
 	}
-
 	return nil
 }
 
@@ -185,47 +185,46 @@ func (s *Session) Clear() error {
 	if err := s.manager.store.Clear(s.id); err != nil {
 		return errAs(err)
 	}
-
 	return s.clearCookie()
 }
 
-// Int is a helper to get values as integer
+// Int is a helper to get values as integer.
 func (s *Session) Int(r interface{}, err error) (int, error) {
 	out, err := s.manager.store.Int(r, err)
 	return out, errAs(err)
 }
 
-// Int64 is a helper to get values as Int64
+// Int64 is a helper to get values as Int64.
 func (s *Session) Int64(r interface{}, err error) (int64, error) {
 	out, err := s.manager.store.Int64(r, err)
 	return out, errAs(err)
 }
 
-// UInt64 is a helper to get values as UInt64
+// UInt64 is a helper to get values as UInt64.
 func (s *Session) UInt64(r interface{}, err error) (uint64, error) {
 	out, err := s.manager.store.UInt64(r, err)
 	return out, errAs(err)
 }
 
-// Float64 is a helper to get values as Float64
+// Float64 is a helper to get values as Float64.
 func (s *Session) Float64(r interface{}, err error) (float64, error) {
 	out, err := s.manager.store.Float64(r, err)
 	return out, errAs(err)
 }
 
-// String is a helper to get values as String
+// String is a helper to get values as String.
 func (s *Session) String(r interface{}, err error) (string, error) {
 	out, err := s.manager.store.String(r, err)
 	return out, errAs(err)
 }
 
-// Bytes is a helper to get values as Bytes
+// Bytes is a helper to get values as Bytes.
 func (s *Session) Bytes(r interface{}, err error) ([]byte, error) {
 	out, err := s.manager.store.Bytes(r, err)
 	return out, errAs(err)
 }
 
-// Bool is a helper to get values as Bool
+// Bool is a helper to get values as Bool.
 func (s *Session) Bool(r interface{}, err error) (bool, error) {
 	out, err := s.manager.store.Bool(r, err)
 	return out, errAs(err)
