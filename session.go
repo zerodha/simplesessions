@@ -3,14 +3,16 @@ package simplesessions
 import (
 	"errors"
 	"net/http"
+	"sync"
 	"time"
 )
 
 // Session provides the object to get, set, or clear session data.
 type Session struct {
-	// Map to store session data, loaded using `LoadValues` method.
+	// Map to store session data, loaded using `CacheAll` method.
 	// All `Get` methods checks here before fetching from the store.
-	values map[string]interface{}
+	cache    map[string]interface{}
+	cacheMux sync.RWMutex
 
 	// Session manager.
 	manager *Manager
@@ -82,49 +84,126 @@ func (s *Session) ID() string {
 	return s.id
 }
 
-// LoadValues loads session values into memory for quick access.
-// Ideal for centralized session fetching, e.g., in middleware.
-// Subsequent Get/GetMulti calls return cached values, avoiding store access.
-// Use ResetValues() to ensure GetAll/Get/GetMulti fetches from the store.
-// Set/SetMulti/Clear do not update the values, so this method must be called again for any changes.
-func (s *Session) LoadValues() error {
-	var err error
-	s.values, err = s.GetAll()
-	return err
+// getCacheAll returns a copy of cached map.
+func (s *Session) getCacheAll() map[string]interface{} {
+	s.cacheMux.RLock()
+	defer s.cacheMux.RUnlock()
+
+	if s.cache == nil {
+		return nil
+	}
+
+	out := map[string]interface{}{}
+	for k, v := range s.cache {
+		out[k] = v
+	}
+
+	return out
 }
 
-// ResetValues clears loaded values, ensuring subsequent Get, GetAll, and GetMulti calls fetch from the store.
-func (s *Session) ResetValues() {
-	s.values = make(map[string]interface{})
+// getCacheAll returns a map of values for the given list of keys.
+// If key doesn't exist then ErrFieldNotFound is returned.
+func (s *Session) getCache(key ...string) map[string]interface{} {
+	s.cacheMux.RLock()
+	defer s.cacheMux.RUnlock()
+
+	if s.cache == nil {
+		return nil
+	}
+
+	out := map[string]interface{}{}
+	for _, k := range key {
+		v, ok := s.cache[k]
+		if ok {
+			out[k] = v
+		} else {
+			out[k] = ErrFieldNotFound
+		}
+	}
+
+	return out
+}
+
+// setCache sets a cache for given kv pairs.
+func (s *Session) setCache(data map[string]interface{}) {
+	s.cacheMux.Lock()
+	defer s.cacheMux.Unlock()
+
+	// If cacheAll() is not called the don't maintain cache.
+	if s.cache == nil {
+		return
+	}
+
+	for k, v := range data {
+		s.cache[k] = v
+	}
+}
+
+// deleteCache sets a cache for given kv pairs.
+func (s *Session) deleteCache(key ...string) {
+	s.cacheMux.Lock()
+	defer s.cacheMux.Unlock()
+
+	// If cacheAll() is not called the don't maintain cache.
+	if s.cache == nil {
+		return
+	}
+
+	for _, k := range key {
+		delete(s.cache, k)
+	}
+}
+
+// CacheAll loads session values into memory for quick access.
+// Ideal for centralized session fetching, e.g., in middleware.
+// Subsequent Get/GetMulti calls return cached values, avoiding store access.
+// Use ResetCache() to ensure GetAll/Get/GetMulti fetches from the store.
+func (s *Session) CacheAll() error {
+	all, err := s.manager.store.GetAll(s.id)
+	if err != nil {
+		return err
+	}
+
+	s.cacheMux.Lock()
+	defer s.cacheMux.Unlock()
+	s.cache = map[string]interface{}{}
+	for k, v := range all {
+		s.cache[k] = v
+	}
+
+	return nil
+}
+
+// ResetCache clears loaded values, ensuring subsequent Get, GetAll, and GetMulti calls fetch from the store.
+func (s *Session) ResetCache() {
+	s.cacheMux.Lock()
+	defer s.cacheMux.Unlock()
+	s.cache = nil
 }
 
 // GetAll gets all the fields for the given session id.
 func (s *Session) GetAll() (map[string]interface{}, error) {
-	// Load value from map if its already loaded.
-	if len(s.values) > 0 {
-		return s.values, nil
+	// Try to get the values from cache.
+	c := s.getCacheAll()
+	if c != nil {
+		return c, nil
 	}
 
+	// Get the values from store.
 	out, err := s.manager.store.GetAll(s.id)
 	return out, errAs(err)
 }
 
 // GetMulti retrieves values for multiple session fields.
 // If a field is not found in the store then its returned as nil.
-func (s *Session) GetMulti(keys ...string) (map[string]interface{}, error) {
-	// Load values from map if its already loaded
-	if len(s.values) > 0 {
-		vals := make(map[string]interface{})
-		for _, k := range keys {
-			if v, ok := s.values[k]; ok {
-				vals[k] = v
-			}
-		}
-
-		return vals, nil
+func (s *Session) GetMulti(key ...string) (map[string]interface{}, error) {
+	// Try to get the values from cache.
+	c := s.getCache(key...)
+	if c != nil {
+		return c, nil
 	}
 
-	out, err := s.manager.store.GetMulti(s.id, keys...)
+	out, err := s.manager.store.GetMulti(s.id, key...)
 	return out, errAs(err)
 }
 
@@ -132,10 +211,14 @@ func (s *Session) GetMulti(keys ...string) (map[string]interface{}, error) {
 // If the session is already loaded, it returns the value from the existing map.
 // Otherwise, it fetches the value from the store.
 func (s *Session) Get(key string) (interface{}, error) {
-	// Return value from map if already loaded.
-	if len(s.values) > 0 {
-		if val, ok := s.values[key]; ok {
-			return val, nil
+	// Try to get the values from cache.
+	c := s.getCache(key)
+	if c != nil {
+		err, ok := c[key].(error)
+		if ok {
+			return nil, err
+		} else {
+			return c[key], nil
 		}
 	}
 
@@ -145,45 +228,41 @@ func (s *Session) Get(key string) (interface{}, error) {
 }
 
 // Set assigns a value to the given key in the session.
-// The store determines whether to commit all values at once or store them individually.
-// Use Commit() method to commit all values if the store doesn't immediately persist them.
 func (s *Session) Set(key string, val interface{}) error {
 	err := s.manager.store.Set(s.id, key, val)
+	if err == nil {
+		s.setCache(map[string]interface{}{
+			key: val,
+		})
+	}
 	return errAs(err)
 }
 
 // SetMulti assigns multiple values to the session.
-// The store determines whether to commit all values at once or store them individually.
-func (s *Session) SetMulti(values map[string]interface{}) error {
-	for k, v := range values {
-		if err := s.manager.store.Set(s.id, k, v); err != nil {
-			return errAs(err)
-		}
+func (s *Session) SetMulti(data map[string]interface{}) error {
+	err := s.manager.store.SetMulti(s.id, data)
+	if err == nil {
+		s.setCache(data)
 	}
-	return nil
-}
-
-// Commit persists all values to the store.
-// The store determines whether to commit all values at once or store them individually.
-func (s *Session) Commit() error {
-	if err := s.manager.store.Commit(s.id); err != nil {
-		return errAs(err)
-	}
-	return nil
+	return errAs(err)
 }
 
 // Delete deletes a field from session.
-func (s *Session) Delete(key string) error {
-	if err := s.manager.store.Delete(s.id, key); err != nil {
-		return errAs(err)
+func (s *Session) Delete(key ...string) error {
+	err := s.manager.store.Delete(s.id, key...)
+	if err == nil {
+		s.deleteCache(key...)
 	}
-	return nil
+	return errAs(err)
 }
 
 // Clear clears session data from store and clears the cookie.
 func (s *Session) Clear() error {
-	if err := s.manager.store.Clear(s.id); err != nil {
+	err := s.manager.store.Clear(s.id)
+	if err != nil {
 		return errAs(err)
+	} else {
+		s.ResetCache()
 	}
 	return s.clearCookie()
 }

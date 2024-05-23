@@ -3,30 +3,30 @@ package simplesessions
 // Store represents store interface. This interface can be
 // implemented to create various backend stores for session.
 type Store interface {
-	// Create creates new session in store and returns the cookie value.
-	Create() (cookieValue string, err error)
+	// Create creates new session in the store and returns the session ID.
+	Create() (id string, err error)
 
 	// Get gets a value for given key from session.
-	Get(cookieValue, key string) (value interface{}, err error)
+	Get(id, key string) (value interface{}, err error)
 
 	// GetMulti gets a maps of multiple values for given keys.
-	GetMulti(cookieValue string, keys ...string) (values map[string]interface{}, err error)
+	// If some fields are not found then return ErrFieldNotFound for that field.
+	GetMulti(id string, keys ...string) (data map[string]interface{}, err error)
 
-	// GetAll gets all key and value from session,
-	GetAll(cookieValue string) (values map[string]interface{}, err error)
+	// GetAll gets all key and value from session.
+	GetAll(id string) (data map[string]interface{}, err error)
 
 	// Set sets an value for a field in session.
-	// Its up to store to either store it in session right after set or after commit.
-	Set(cookieValue, key string, value interface{}) error
+	Set(id, key string, value interface{}) error
 
-	// Commit commits all the previously set values to store.
-	Commit(cookieValue string) error
+	// Set takes a map of kv pair and set the field in store.
+	SetMulti(id string, data map[string]interface{}) error
 
-	// Delete a field from session.
-	Delete(cookieValue string, key string) error
+	// Delete a given list of keys from session.
+	Delete(id string, key ...string) error
 
-	// Clear clears the session key from backend if exists.
-	Clear(cookieValue string) error
+	// Clear clears the entire session.
+	Clear(id string) error
 
 	// Helper method for typecasting/asserting.
 	Int(interface{}, error) (int, error)

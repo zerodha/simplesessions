@@ -93,7 +93,7 @@ func TestSessionNewSession(t *testing.T) {
 	assert.Equal(t, mgr, sess.manager)
 	assert.Equal(t, reader, sess.reader)
 	assert.Equal(t, writer, sess.writer)
-	assert.NotNil(t, sess.values)
+	assert.Nil(t, sess.cache)
 	assert.Equal(t, mockSessionID, sess.id)
 	assert.Equal(t, sess.id, sess.ID())
 }
@@ -204,7 +204,7 @@ func TestSessionClearCookie(t *testing.T) {
 	assert.True(t, receCk.Expires.UnixNano() < time.Now().UnixNano())
 }
 
-func TestSessionLoadValues(t *testing.T) {
+func TestSessionCacheAll(t *testing.T) {
 	str := newMockStore()
 	str.data = map[string]interface{}{
 		"key1": 1,
@@ -215,12 +215,20 @@ func TestSessionLoadValues(t *testing.T) {
 	sess, err := mgr.NewSession(nil, nil)
 	assert.NoError(t, err)
 
-	err = sess.LoadValues()
+	// Test error.
+	str.err = errors.New("store error")
+	err = sess.CacheAll()
+	assert.ErrorIs(t, str.err, err)
+	assert.Nil(t, sess.cache)
+
+	// Test without error.
+	str.err = nil
+	err = sess.CacheAll()
 	assert.NoError(t, err)
-	assert.Equal(t, str.data, sess.values)
+	assert.Equal(t, str.data, sess.cache)
 }
 
-func TestSessionResetValues(t *testing.T) {
+func TestSessionResetCache(t *testing.T) {
 	str := newMockStore()
 	str.data = map[string]interface{}{
 		"key1": 1,
@@ -228,11 +236,11 @@ func TestSessionResetValues(t *testing.T) {
 	}
 	mgr := newMockManager(str)
 	sess, _ := mgr.NewSession(nil, nil)
-	sess.LoadValues()
-	assert.NotEqual(t, 0, len(sess.values))
+	sess.CacheAll()
+	assert.Equal(t, str.data, sess.cache)
 
-	sess.ResetValues()
-	assert.Equal(t, 0, len(sess.values))
+	sess.ResetCache()
+	assert.Nil(t, sess.cache)
 }
 
 func TestSessionGetStore(t *testing.T) {
@@ -267,13 +275,13 @@ func TestSessionGetStore(t *testing.T) {
 	assert.Equal(t, str.data["key1"], v3)
 }
 
-func TestSessionGetLoaded(t *testing.T) {
+func TestSessionGetCached(t *testing.T) {
 	str := newMockStore()
 	mgr := newMockManager(str)
 	sess, err := mgr.NewSession(nil, nil)
 	assert.NoError(t, err)
 
-	sess.values = map[string]interface{}{
+	sess.cache = map[string]interface{}{
 		"key1": 1,
 		"key2": 2,
 		"key3": 3,
@@ -282,22 +290,42 @@ func TestSessionGetLoaded(t *testing.T) {
 	// GetAll.
 	v1, err := sess.GetAll()
 	assert.NoError(t, err)
-	assert.Equal(t, sess.values, v1)
+	assert.Equal(t, sess.cache, v1)
 
 	// GetMulti.
 	v2, err := sess.GetMulti("key1", "key2")
 	assert.NoError(t, err)
 	assert.Contains(t, v2, "key1")
-	assert.Equal(t, sess.values["key1"], v2["key1"])
+	assert.Equal(t, sess.cache["key1"], v2["key1"])
 	assert.Contains(t, v2, "key2")
-	assert.Equal(t, sess.values["key2"], v2["key2"])
+	assert.Equal(t, sess.cache["key2"], v2["key2"])
 	assert.NotContains(t, v2, "key3")
 
 	// Get.
 	v3, err := sess.Get("key1")
 	assert.NoError(t, err)
-	assert.Contains(t, sess.values, "key1")
-	assert.Equal(t, sess.values["key1"], v3)
+	assert.Contains(t, sess.cache, "key1")
+	assert.Equal(t, sess.cache["key1"], v3)
+
+	// Get unknowm field.
+	_, err = sess.Get("key99")
+	assert.ErrorIs(t, ErrFieldNotFound, err)
+
+	// GetMulti unknown fields
+	v4, err := sess.GetMulti("key1", "key2", "key99", "key100")
+	assert.NoError(t, err)
+	assert.Contains(t, v4, "key1")
+	assert.Equal(t, sess.cache["key1"], v4["key1"])
+	assert.Contains(t, v4, "key99")
+	assert.Contains(t, v4, "key100")
+
+	err, ok := v4["key99"].(error)
+	assert.True(t, ok)
+	assert.ErrorIs(t, ErrFieldNotFound, err)
+
+	err, ok = v4["key100"].(error)
+	assert.True(t, ok)
+	assert.ErrorIs(t, ErrFieldNotFound, err)
 }
 
 func TestSessionSet(t *testing.T) {
@@ -310,19 +338,18 @@ func TestSessionSet(t *testing.T) {
 	err = sess.Set("key1", 1)
 	assert.NoError(t, err)
 
-	// Check if its set on temp.
-	assert.Contains(t, str.temp, "key1")
-	assert.NotContains(t, str.data, "key1")
-	assert.Equal(t, str.temp["key1"], 1)
-
-	// Commit.
-	err = sess.Commit()
-	assert.NoError(t, err)
-
 	// Check if its set on data after commit.
 	assert.Contains(t, str.data, "key1")
-	assert.NotContains(t, str.temp, "key1")
 	assert.Equal(t, 1, str.data["key1"])
+	assert.Nil(t, sess.cache)
+
+	// Cache and set.
+	err = sess.CacheAll()
+	assert.NoError(t, err)
+	err = sess.Set("key1", 1)
+	assert.NoError(t, err)
+	assert.NotNil(t, sess.cache)
+	assert.Equal(t, sess.cache, str.data)
 }
 
 func TestSessionSetMulti(t *testing.T) {
@@ -340,43 +367,28 @@ func TestSessionSetMulti(t *testing.T) {
 	err = sess.SetMulti(data)
 	assert.NoError(t, err)
 
-	// Check if its set on temp.
-	assert.Contains(t, str.temp, "key1")
-	assert.Contains(t, str.temp, "key2")
-	assert.Contains(t, str.temp, "key3")
-	assert.NotContains(t, str.data, "key1")
-	assert.NotContains(t, str.data, "key2")
-	assert.NotContains(t, str.data, "key3")
-	assert.Equal(t, data["key1"], str.temp["key1"])
-	assert.Equal(t, data["key2"], str.temp["key2"])
-	assert.Equal(t, data["key3"], str.temp["key3"])
-
-	// Commit.
-	err = sess.Commit()
-	assert.NoError(t, err)
-
 	// Check if its set on data after commit.
 	assert.Contains(t, str.data, "key1")
 	assert.Contains(t, str.data, "key2")
 	assert.Contains(t, str.data, "key3")
-	assert.NotContains(t, str.temp, "key1")
-	assert.NotContains(t, str.temp, "key2")
-	assert.NotContains(t, str.temp, "key3")
 	assert.Equal(t, data["key1"], str.data["key1"])
 	assert.Equal(t, data["key2"], str.data["key2"])
 	assert.Equal(t, data["key3"], str.data["key3"])
+	assert.Nil(t, sess.cache)
 
-	// Test error.
-	str.err = errors.New("store error")
-	err = sess.SetMulti(data)
-	assert.ErrorIs(t, str.err, err)
-
-	// Test error.
-	str.err = nil
+	// Cache and set.
+	str.data = map[string]interface{}{}
+	err = sess.CacheAll()
+	assert.NoError(t, err)
 	err = sess.SetMulti(data)
 	assert.NoError(t, err)
+	assert.NotNil(t, sess.cache)
+	assert.Equal(t, sess.cache, str.data)
+
+	// Test error.
+	sess.ResetCache()
 	str.err = errors.New("store error")
-	err = sess.Commit()
+	err = sess.SetMulti(data)
 	assert.ErrorIs(t, str.err, err)
 }
 
@@ -395,6 +407,14 @@ func TestSessionDelete(t *testing.T) {
 	err = sess.Delete("key1")
 	assert.NoError(t, err)
 	assert.NotContains(t, str.data, "key1")
+
+	// Cache and set.
+	err = sess.CacheAll()
+	assert.NoError(t, err)
+	err = sess.Delete("key2")
+	assert.NoError(t, err)
+	assert.NotNil(t, sess.cache)
+	assert.Equal(t, sess.cache, str.data)
 
 	// Test error.
 	str.err = errors.New("store error")
@@ -433,6 +453,24 @@ func TestSessionClear(t *testing.T) {
 	err = sess.Clear()
 	assert.NoError(t, err)
 	assert.Equal(t, 0, len(str.data))
+	assert.Nil(t, sess.cache)
+
+	// Test clear.
+	str = newMockStore()
+	str.data = map[string]interface{}{
+		"key1": 1,
+		"key2": 2,
+	}
+	mgr = newMockManager(str)
+	sess, err = mgr.NewSession(nil, nil)
+	assert.NoError(t, err)
+	err = sess.CacheAll()
+	assert.NoError(t, err)
+	assert.NotNil(t, sess.cache)
+	err = sess.Clear()
+	assert.NoError(t, err)
+	assert.Equal(t, 0, len(str.data))
+	assert.Nil(t, sess.cache)
 
 	// Test deleteCookie callback.
 	var (

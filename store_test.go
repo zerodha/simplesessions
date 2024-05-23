@@ -5,14 +5,13 @@ type MockStore struct {
 	err  error
 	id   string
 	data map[string]interface{}
-	temp map[string]interface{}
 }
 
-func (s *MockStore) Create() (cv string, err error) {
+func (s *MockStore) Create() (string, error) {
 	return s.id, s.err
 }
 
-func (s *MockStore) Get(cv, key string) (value interface{}, err error) {
+func (s *MockStore) Get(id, key string) (interface{}, error) {
 	if s.id == "" {
 		return nil, ErrInvalidSession
 	}
@@ -21,24 +20,19 @@ func (s *MockStore) Get(cv, key string) (value interface{}, err error) {
 	if !ok {
 		return nil, ErrFieldNotFound
 	}
-
 	return d, s.err
 }
 
-func (s *MockStore) GetMulti(cv string, keys ...string) (values map[string]interface{}, err error) {
+func (s *MockStore) GetMulti(id string, keys ...string) (values map[string]interface{}, err error) {
 	if s.id == "" {
 		return nil, ErrInvalidSession
 	}
 
 	out := make(map[string]interface{})
 	for _, key := range keys {
-		v, err := s.Get(cv, key)
-		if err != nil {
-			if err == ErrFieldNotFound {
-				v = nil
-			} else {
-				return nil, err
-			}
+		v, ok := s.data[key]
+		if !ok {
+			v = err
 		}
 		out[key] = v
 	}
@@ -46,7 +40,7 @@ func (s *MockStore) GetMulti(cv string, keys ...string) (values map[string]inter
 	return out, s.err
 }
 
-func (s *MockStore) GetAll(cv string) (values map[string]interface{}, err error) {
+func (s *MockStore) GetAll(id string) (values map[string]interface{}, err error) {
 	if s.id == "" {
 		return nil, ErrInvalidSession
 	}
@@ -59,39 +53,38 @@ func (s *MockStore) Set(cv, key string, value interface{}) error {
 		return ErrInvalidSession
 	}
 
-	s.temp[key] = value
+	s.data[key] = value
 	return s.err
 }
 
-func (s *MockStore) Commit(cv string) error {
+func (s *MockStore) SetMulti(id string, data map[string]interface{}) error {
 	if s.id == "" {
 		return ErrInvalidSession
 	}
 
-	for key, val := range s.temp {
-		s.data[key] = val
+	for k, v := range data {
+		s.data[k] = v
 	}
-	s.temp = map[string]interface{}{}
-
 	return s.err
 }
 
-func (s *MockStore) Delete(cv string, key string) error {
+func (s *MockStore) Delete(id string, key ...string) error {
 	if s.id == "" {
 		return ErrInvalidSession
 	}
-	s.temp = nil
-	delete(s.data, key)
-	delete(s.temp, key)
+
+	for _, k := range key {
+		delete(s.data, k)
+	}
 	return s.err
 }
 
-func (s *MockStore) Clear(cv string) error {
+func (s *MockStore) Clear(id string) error {
 	if s.id == "" {
 		return ErrInvalidSession
 	}
+
 	s.data = map[string]interface{}{}
-	s.temp = map[string]interface{}{}
 	return s.err
 }
 

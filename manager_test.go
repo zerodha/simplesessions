@@ -15,7 +15,6 @@ func newMockStore() *MockStore {
 	return &MockStore{
 		id:   mockSessionID,
 		data: map[string]interface{}{},
-		temp: map[string]interface{}{},
 		err:  nil,
 	}
 }

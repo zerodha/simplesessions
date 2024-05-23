@@ -119,7 +119,7 @@ func (m *Manager) NewSession(r, w interface{}) (*Session, error) {
 		manager: m,
 		reader:  r,
 		writer:  w,
-		values:  make(map[string]interface{}),
+		cache:   nil,
 	}
 	// Write cookie.
 	if err := sess.WriteCookie(id); err != nil {
@@ -166,7 +166,7 @@ func (m *Manager) Acquire(c context.Context, r, w interface{}) (*Session, error)
 			reader:  r,
 			writer:  w,
 			id:      ck.Value,
-			values:  make(map[string]interface{}),
+			cache:   nil,
 		}, nil
 	}
 
