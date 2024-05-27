@@ -32,17 +32,13 @@ var (
 	// Store code = 1
 	ErrInvalidSession = errors.New("simplesession: invalid session")
 
-	// ErrFieldNotFound is raised when given key is not found in store
+	// ErrNil is raised when returned value is nil.
 	// Store code = 2
-	ErrFieldNotFound = errors.New("simplesession: session field not found in store")
+	ErrNil = errors.New("simplesession: nil returned")
 
 	// ErrAssertType is raised when type assertion fails
 	// Store code = 3
 	ErrAssertType = errors.New("simplesession: invalid type assertion")
-
-	// ErrNil is raised when returned value is nil.
-	// Store code = 4
-	ErrNil = errors.New("simplesession: nil returned")
 )
 
 type errCode interface {
@@ -54,29 +50,31 @@ type errCode interface {
 func (s *Session) WriteCookie(id string) error {
 	ck := &http.Cookie{
 		Value:    id,
-		Name:     s.manager.opts.CookieName,
-		Domain:   s.manager.opts.CookieDomain,
-		Path:     s.manager.opts.CookiePath,
-		Secure:   s.manager.opts.IsSecureCookie,
-		HttpOnly: s.manager.opts.IsHTTPOnlyCookie,
-		SameSite: s.manager.opts.SameSite,
+		Name:     s.manager.opts.Cookie.Name,
+		Domain:   s.manager.opts.Cookie.Domain,
+		Path:     s.manager.opts.Cookie.Path,
+		Secure:   s.manager.opts.Cookie.IsSecure,
+		HttpOnly: s.manager.opts.Cookie.IsHTTPOnly,
+		SameSite: s.manager.opts.Cookie.SameSite,
+		Expires:  s.manager.opts.Cookie.Expires,
+		MaxAge:   int(s.manager.opts.Cookie.MaxAge.Seconds()),
 	}
 
 	// Call `SetCookie` callback to write cookie to response
-	return s.manager.setCookieCb(ck, s.writer)
+	return s.manager.setCookieHook(ck, s.writer)
 }
 
 // clearCookie sets the cookie's expiry to one day prior to clear it.
 func (s *Session) clearCookie() error {
 	ck := &http.Cookie{
-		Name:  s.manager.opts.CookieName,
+		Name:  s.manager.opts.Cookie.Name,
 		Value: "",
 		// Set expiry to previous date to clear it from browser
 		Expires: time.Now().AddDate(0, 0, -1),
 	}
 
 	// Call `SetCookie` callback to write cookie to response
-	return s.manager.setCookieCb(ck, s.writer)
+	return s.manager.setCookieHook(ck, s.writer)
 }
 
 // ID returns the acquired session ID. If cookie is not set then empty string is returned.
@@ -117,7 +115,7 @@ func (s *Session) getCache(key ...string) map[string]interface{} {
 		if ok {
 			out[k] = v
 		} else {
-			out[k] = ErrFieldNotFound
+			out[k] = nil
 		}
 	}
 
@@ -212,14 +210,10 @@ func (s *Session) GetMulti(key ...string) (map[string]interface{}, error) {
 // Otherwise, it fetches the value from the store.
 func (s *Session) Get(key string) (interface{}, error) {
 	// Try to get the values from cache.
+	// If cache is set then get only from cache.
 	c := s.getCache(key)
 	if c != nil {
-		err, ok := c[key].(error)
-		if ok {
-			return nil, err
-		} else {
-			return c[key], nil
-		}
+		return c[key], nil
 	}
 
 	// Fetch from store if not found in the map.
@@ -325,11 +319,9 @@ func errAs(err error) error {
 	case 1:
 		return ErrInvalidSession
 	case 2:
-		return ErrFieldNotFound
+		return ErrNil
 	case 3:
 		return ErrAssertType
-	case 4:
-		return ErrNil
 	}
 
 	return err

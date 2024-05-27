@@ -4,7 +4,7 @@ package simplesessions
 // implemented to create various backend stores for session.
 type Store interface {
 	// Create creates new session in the store and returns the session ID.
-	Create() (id string, err error)
+	Create(id string) (err error)
 
 	// Get gets a value for given key from session.
 	Get(id, key string) (value interface{}, err error)

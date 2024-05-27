@@ -7,8 +7,8 @@ type MockStore struct {
 	data map[string]interface{}
 }
 
-func (s *MockStore) Create() (string, error) {
-	return s.id, s.err
+func (s *MockStore) Create(id string) error {
+	return s.err
 }
 
 func (s *MockStore) Get(id, key string) (interface{}, error) {
@@ -18,7 +18,7 @@ func (s *MockStore) Get(id, key string) (interface{}, error) {
 
 	d, ok := s.data[key]
 	if !ok {
-		return nil, ErrFieldNotFound
+		return nil, nil
 	}
 	return d, s.err
 }

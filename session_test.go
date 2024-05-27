@@ -2,6 +2,7 @@ package simplesessions
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"testing"
 	"time"
@@ -27,20 +28,18 @@ func TestErrorTypes(t *testing.T) {
 		// Error codes for store errors. This should match the codes
 		// defined in the /simplesessions package exactly.
 		errInvalidSession = &Err{code: 1, msg: "invalid session"}
-		errFieldNotFound  = &Err{code: 2, msg: "field not found"}
+		errNil            = &Err{code: 2, msg: "nil returned"}
 		errAssertType     = &Err{code: 3, msg: "assertion failed"}
-		errNil            = &Err{code: 4, msg: "nil returned"}
 		errCustom         = &Err{msg: "custom error"}
 	)
 
 	assert.Equal(t, errAs(errInvalidSession), ErrInvalidSession)
-	assert.Equal(t, errAs(errFieldNotFound), ErrFieldNotFound)
 	assert.Equal(t, errAs(errAssertType), ErrAssertType)
 	assert.Equal(t, errAs(errNil), ErrNil)
 	assert.Equal(t, errAs(errCustom), errCustom)
 }
 
-func TestSessionHelpers(t *testing.T) {
+func TestHelpers(t *testing.T) {
 	sess := Session{
 		manager: newMockManager(newMockStore()),
 	}
@@ -83,7 +82,7 @@ func TestSessionHelpers(t *testing.T) {
 	assert.Equal(t, "test error", err.Error())
 }
 
-func TestSessionNewSession(t *testing.T) {
+func TestNewSession(t *testing.T) {
 	reader := "some reader"
 	writer := "some writer"
 	mgr := newMockManager(newMockStore())
@@ -94,22 +93,21 @@ func TestSessionNewSession(t *testing.T) {
 	assert.Equal(t, reader, sess.reader)
 	assert.Equal(t, writer, sess.writer)
 	assert.Nil(t, sess.cache)
-	assert.Equal(t, mockSessionID, sess.id)
 	assert.Equal(t, sess.id, sess.ID())
 }
 
-func TestSessionNewSessionErrors(t *testing.T) {
+func TestNewSessionErrors(t *testing.T) {
 	assert := assert.New(t)
 
 	mgr := New(Options{})
 	sess, err := mgr.NewSession(nil, nil)
-	assert.Equal("session store is not set", err.Error())
+	assert.Equal("session store not set", err.Error())
 	assert.Nil(sess)
 
 	mgr = New(Options{})
 	mgr.UseStore(&MockStore{})
 	sess, err = mgr.NewSession(nil, nil)
-	assert.Equal("callback `SetCookie` not set", err.Error())
+	assert.Equal("`SetCookie` hook not set", err.Error())
 	assert.Nil(sess)
 
 	// Store error.
@@ -124,22 +122,29 @@ func TestSessionNewSessionErrors(t *testing.T) {
 	// Cookie write error.
 	str.err = nil
 	wErr := errors.New("write cookie error")
-	mgr.RegisterSetCookie(func(cookie *http.Cookie, w interface{}) error {
-		return wErr
-	})
+	mgr.SetCookieHooks(nil, func(*http.Cookie, interface{}) error { return wErr })
+
 	sess, err = mgr.NewSession(nil, nil)
 	assert.ErrorIs(wErr, err)
 	assert.Nil(sess)
+
+	genErr := fmt.Errorf("generate error")
+	gen := func() (string, error) { return "xxx", genErr }
+	validate := func(string) bool { return false }
+	mgr.SetSessionIDHooks(gen, validate)
+	sess, err = mgr.NewSession(nil, nil)
+	assert.ErrorIs(genErr, err)
+	assert.Nil(sess)
 }
 
-func TestSessionNewSessionCreateNewCookie(t *testing.T) {
+func TestNewSessionCreateNewCookie(t *testing.T) {
 	mgr := newMockManager(newMockStore())
 	sess, err := mgr.NewSession(nil, nil)
 	assert.NoError(t, err)
-	assert.Equal(t, sess.id, mockSessionID)
+	assert.True(t, mgr.validateID(sess.id))
 }
 
-func TestSessionNewSessionSetCookieCb(t *testing.T) {
+func TestNewSessionSetCookieCb(t *testing.T) {
 	var (
 		mgr    = newMockManager(newMockStore())
 		receCk *http.Cookie
@@ -147,48 +152,65 @@ func TestSessionNewSessionSetCookieCb(t *testing.T) {
 		isCb   bool
 	)
 
-	mgr.RegisterSetCookie(func(cookie *http.Cookie, w interface{}) error {
-		receCk = cookie
+	mgr.SetCookieHooks(nil, func(ck *http.Cookie, w interface{}) error {
+		receCk = ck
 		receWr = w
 		isCb = true
 		return nil
 	})
 
 	var writer = "this is writer interface"
-	_, err := mgr.NewSession(nil, writer)
+	sess, err := mgr.NewSession(nil, writer)
 	assert.NoError(t, err)
 
 	assert.True(t, isCb)
-	assert.Equal(t, mockSessionID, receCk.Value)
+	assert.Equal(t, sess.id, receCk.Value)
 	assert.Equal(t, writer, receWr)
 }
 
-func TestSessionWriteCookie(t *testing.T) {
+func TestWriteCookie(t *testing.T) {
 	mgr := newMockManager(newMockStore())
 	mgr.opts = &Options{
-		CookieName:       "somename",
-		CookieDomain:     "abc.xyz",
-		CookiePath:       "/abc/xyz",
-		CookieLifetime:   time.Second * 1000,
-		IsHTTPOnlyCookie: true,
-		IsSecureCookie:   true,
 		EnableAutoCreate: false,
-		SameSite:         http.SameSiteDefaultMode,
+		Cookie: CookieOptions{
+			Name:       "somename",
+			Domain:     "abc.xyz",
+			Path:       "/abc/xyz",
+			IsHTTPOnly: true,
+			IsSecure:   true,
+			SameSite:   http.SameSiteDefaultMode,
+			MaxAge:     time.Hour,
+			Expires:    time.Now(),
+		},
 	}
 
+	var receCk *http.Cookie
+	mgr.SetCookieHooks(nil, func(ck *http.Cookie, w interface{}) error {
+		receCk = ck
+		return nil
+	})
 	sess, err := mgr.NewSession(nil, nil)
 	assert.NoError(t, err)
 	assert.NoError(t, sess.WriteCookie("testvalue"))
+
+	assert.Equal(t, mgr.opts.Cookie.Name, receCk.Name)
+	assert.Equal(t, mgr.opts.Cookie.Domain, receCk.Domain)
+	assert.Equal(t, mgr.opts.Cookie.Path, receCk.Path)
+	assert.Equal(t, mgr.opts.Cookie.IsSecure, receCk.Secure)
+	assert.Equal(t, mgr.opts.Cookie.SameSite, receCk.SameSite)
+	assert.Equal(t, mgr.opts.Cookie.IsHTTPOnly, receCk.HttpOnly)
+	assert.Equal(t, int(mgr.opts.Cookie.MaxAge.Seconds()), receCk.MaxAge)
+	assert.Equal(t, mgr.opts.Cookie.Expires, receCk.Expires)
 }
 
-func TestSessionClearCookie(t *testing.T) {
+func TestClearCookie(t *testing.T) {
 	var (
 		mgr    = newMockManager(newMockStore())
 		receCk *http.Cookie
 		isCb   bool
 	)
-	mgr.RegisterSetCookie(func(cookie *http.Cookie, w interface{}) error {
-		receCk = cookie
+	mgr.SetCookieHooks(nil, func(ck *http.Cookie, w interface{}) error {
+		receCk = ck
 		isCb = true
 		return nil
 	})
@@ -204,7 +226,7 @@ func TestSessionClearCookie(t *testing.T) {
 	assert.True(t, receCk.Expires.UnixNano() < time.Now().UnixNano())
 }
 
-func TestSessionCacheAll(t *testing.T) {
+func TestCacheAll(t *testing.T) {
 	str := newMockStore()
 	str.data = map[string]interface{}{
 		"key1": 1,
@@ -228,7 +250,7 @@ func TestSessionCacheAll(t *testing.T) {
 	assert.Equal(t, str.data, sess.cache)
 }
 
-func TestSessionResetCache(t *testing.T) {
+func TestResetCache(t *testing.T) {
 	str := newMockStore()
 	str.data = map[string]interface{}{
 		"key1": 1,
@@ -243,7 +265,7 @@ func TestSessionResetCache(t *testing.T) {
 	assert.Nil(t, sess.cache)
 }
 
-func TestSessionGetStore(t *testing.T) {
+func TestGetStore(t *testing.T) {
 	str := newMockStore()
 	str.data = map[string]interface{}{
 		"key1": 1,
@@ -275,7 +297,7 @@ func TestSessionGetStore(t *testing.T) {
 	assert.Equal(t, str.data["key1"], v3)
 }
 
-func TestSessionGetCached(t *testing.T) {
+func TestGetCached(t *testing.T) {
 	str := newMockStore()
 	mgr := newMockManager(str)
 	sess, err := mgr.NewSession(nil, nil)
@@ -308,8 +330,9 @@ func TestSessionGetCached(t *testing.T) {
 	assert.Equal(t, sess.cache["key1"], v3)
 
 	// Get unknowm field.
-	_, err = sess.Get("key99")
-	assert.ErrorIs(t, ErrFieldNotFound, err)
+	v3, err = sess.Get("key99")
+	assert.NoError(t, err)
+	assert.Nil(t, v3)
 
 	// GetMulti unknown fields
 	v4, err := sess.GetMulti("key1", "key2", "key99", "key100")
@@ -319,16 +342,16 @@ func TestSessionGetCached(t *testing.T) {
 	assert.Contains(t, v4, "key99")
 	assert.Contains(t, v4, "key100")
 
-	err, ok := v4["key99"].(error)
+	v5, ok := v4["key99"]
 	assert.True(t, ok)
-	assert.ErrorIs(t, ErrFieldNotFound, err)
+	assert.Nil(t, v5)
 
-	err, ok = v4["key100"].(error)
+	v5, ok = v4["key100"]
 	assert.True(t, ok)
-	assert.ErrorIs(t, ErrFieldNotFound, err)
+	assert.Nil(t, v5)
 }
 
-func TestSessionSet(t *testing.T) {
+func TestSet(t *testing.T) {
 	str := newMockStore()
 	str.data = map[string]interface{}{}
 	mgr := newMockManager(str)
@@ -352,7 +375,7 @@ func TestSessionSet(t *testing.T) {
 	assert.Equal(t, sess.cache, str.data)
 }
 
-func TestSessionSetMulti(t *testing.T) {
+func TestSetMulti(t *testing.T) {
 	str := newMockStore()
 	str.data = map[string]interface{}{}
 	mgr := newMockManager(str)
@@ -392,7 +415,7 @@ func TestSessionSetMulti(t *testing.T) {
 	assert.ErrorIs(t, str.err, err)
 }
 
-func TestSessionDelete(t *testing.T) {
+func TestDelete(t *testing.T) {
 	str := newMockStore()
 	str.data = map[string]interface{}{
 		"key1": 1,
@@ -422,7 +445,7 @@ func TestSessionDelete(t *testing.T) {
 	assert.ErrorIs(t, str.err, err)
 }
 
-func TestSessionClear(t *testing.T) {
+func TestClear(t *testing.T) {
 	// Test errors.
 	str := newMockStore()
 	mgr := newMockManager(str)
@@ -435,9 +458,8 @@ func TestSessionClear(t *testing.T) {
 	// Test cookie write error.
 	str.err = nil
 	ckErr := errors.New("cookie error")
-	mgr.RegisterSetCookie(func(cookie *http.Cookie, w interface{}) error {
-		return ckErr
-	})
+	mgr.SetCookieHooks(nil, func(*http.Cookie, interface{}) error { return ckErr })
+
 	err = sess.Clear()
 	assert.ErrorIs(t, ckErr, err)
 
@@ -477,8 +499,8 @@ func TestSessionClear(t *testing.T) {
 		receCk *http.Cookie
 		isCb   bool
 	)
-	mgr.RegisterSetCookie(func(cookie *http.Cookie, w interface{}) error {
-		receCk = cookie
+	mgr.SetCookieHooks(nil, func(ck *http.Cookie, w interface{}) error {
+		receCk = ck
 		isCb = true
 		return nil
 	})
