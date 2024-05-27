@@ -50,6 +50,8 @@ func Int(r interface{}, err error) (int, error) {
 		return int(n), err
 	case nil:
 		return 0, ErrNil
+	case error:
+		return 0, r
 	}
 
 	return 0, ErrAssertType
@@ -74,6 +76,8 @@ func Int64(r interface{}, err error) (int64, error) {
 		return n, err
 	case nil:
 		return 0, ErrNil
+	case error:
+		return 0, r
 	}
 
 	return 0, ErrAssertType
@@ -106,6 +110,8 @@ func UInt64(r interface{}, err error) (uint64, error) {
 		return n, err
 	case nil:
 		return 0, ErrNil
+	case error:
+		return 0, r
 	}
 
 	return 0, ErrAssertType
@@ -127,6 +133,8 @@ func Float64(r interface{}, err error) (float64, error) {
 		return n, err
 	case nil:
 		return 0, ErrNil
+	case error:
+		return 0, r
 	}
 	return 0, ErrAssertType
 }
@@ -143,6 +151,8 @@ func String(r interface{}, err error) (string, error) {
 		return r, nil
 	case nil:
 		return "", ErrNil
+	case error:
+		return "", r
 	}
 	return "", ErrAssertType
 }
@@ -159,6 +169,8 @@ func Bytes(r interface{}, err error) ([]byte, error) {
 		return []byte(r), nil
 	case nil:
 		return nil, ErrNil
+	case error:
+		return nil, r
 	}
 	return nil, ErrAssertType
 }
@@ -182,6 +194,8 @@ func Bool(r interface{}, err error) (bool, error) {
 		return strconv.ParseBool(r)
 	case nil:
 		return false, ErrNil
+	case error:
+		return false, r
 	}
 	return false, ErrAssertType
 }
