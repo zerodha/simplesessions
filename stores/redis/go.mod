@@ -1,4 +1,4 @@
-module github.com/vividvilla/simplesessions/stores/goredis/v9
+module github.com/vividvilla/simplesessions/stores/redis/v3
 
 go 1.18
 

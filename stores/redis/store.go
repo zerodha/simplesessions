@@ -1,22 +1,19 @@
-package goredis
+package redis
 
 import (
 	"context"
-	"crypto/rand"
+	"strconv"
 	"time"
-	"unicode"
 
 	"github.com/redis/go-redis/v9"
-	"github.com/vividvilla/simplesessions/conv"
 )
 
 var (
 	// Error codes for store errors. This should match the codes
 	// defined in the /simplesessions package exactly.
 	ErrInvalidSession = &Err{code: 1, msg: "invalid session"}
-	ErrFieldNotFound  = &Err{code: 2, msg: "field not found"}
+	ErrNil            = &Err{code: 2, msg: "nil returned"}
 	ErrAssertType     = &Err{code: 3, msg: "assertion failed"}
-	ErrNil            = &Err{code: 4, msg: "nil returned"}
 )
 
 type Err struct {
@@ -37,6 +34,8 @@ func (e *Err) Code() int {
 type Store struct {
 	// Maximum lifetime sessions has to be persisted.
 	ttl time.Duration
+	// extend TTL on update.
+	extendTTL bool
 
 	// Prefix for session id.
 	prefix string
@@ -49,7 +48,9 @@ type Store struct {
 const (
 	// Default prefix used to store session redis
 	defaultPrefix = "session:"
-	sessionIDLen  = 32
+	// Default key used when session is created.
+	// Its not possible to have empty map in Redis.
+	defaultSessKey = "_ss"
 )
 
 // New creates a new Redis store instance.
@@ -67,86 +68,58 @@ func (s *Store) SetPrefix(val string) {
 }
 
 // SetTTL sets TTL for session in redis.
-func (s *Store) SetTTL(d time.Duration) {
+// if isExtend is true then ttl is updated on all set/setmulti.
+// otherwise its set only on create().
+func (s *Store) SetTTL(d time.Duration, extend bool) {
 	s.ttl = d
+	s.extendTTL = extend
 }
 
 // Create returns a new session id but doesn't stores it in redis since empty hashmap can't be created.
-func (s *Store) Create() (string, error) {
-	id, err := generateID(sessionIDLen)
-	if err != nil {
-		return "", err
+func (s *Store) Create(id string) error {
+	// Create the session in backend with default session key since
+	// Redis doesn't support empty hashmap and its impossible to
+	// check if the session exist or not.
+	p := s.client.TxPipeline()
+	p.HSet(s.clientCtx, s.prefix+id, defaultSessKey, "1")
+	if s.ttl > 0 {
+		p.Expire(s.clientCtx, s.prefix+id, s.ttl)
 	}
-
-	return id, err
+	_, err := p.Exec(s.clientCtx)
+	return err
 }
 
 // Get gets a field in hashmap. If field is nill then ErrFieldNotFound is raised
 func (s *Store) Get(id, key string) (interface{}, error) {
-	if !validateID(id) {
-		return nil, ErrInvalidSession
-	}
-
-	pipe := s.client.TxPipeline()
-	exists := pipe.Exists(s.clientCtx, s.prefix+id)
-	get := pipe.HGet(s.clientCtx, s.prefix+id, key)
-	_, err := pipe.Exec(s.clientCtx)
-	// redis.Nil is returned if a field does not exist.
-	// Ignore the error and check for key existence check.
-	if err != nil && err != redis.Nil {
-		return nil, err
-	}
-
-	// Check if key exists and return ErrInvalidSession if not.
-	if ex, err := exists.Result(); err != nil {
-		return nil, err
-	} else if ex == 0 {
-		return nil, ErrInvalidSession
-	}
-
-	v, err := get.Result()
-	if err != nil && err == redis.Nil {
-		return nil, ErrFieldNotFound
-	}
-
-	return v, nil
-}
-
-// GetMulti gets a map for values for multiple keys. If key is not found then its set as nil.
-func (s *Store) GetMulti(id string, keys ...string) (map[string]interface{}, error) {
-	if !validateID(id) {
-		return nil, ErrInvalidSession
-	}
-
-	pipe := s.client.TxPipeline()
-	exists := pipe.Exists(s.clientCtx, s.prefix+id)
-	get := pipe.HMGet(s.clientCtx, s.prefix+id, keys...)
-	_, err := pipe.Exec(s.clientCtx)
-	// redis.Nil is returned if a field does not exist.
-	// Ignore the error and check for key existence check.
-	if err != nil && err != redis.Nil {
-		return nil, err
-	}
-
-	// Check if key exists and return ErrInvalidSession if not.
-	if ex, err := exists.Result(); err != nil {
-		return nil, err
-	} else if ex == 0 {
-		return nil, ErrInvalidSession
-	}
-
-	v, err := get.Result()
+	vals, err := s.client.HMGet(s.clientCtx, s.prefix+id, defaultSessKey, key).Result()
 	if err != nil {
 		return nil, err
 	}
 
+	if vals[0] == nil {
+		return nil, ErrInvalidSession
+	}
+
+	return vals[1], nil
+}
+
+// GetMulti gets a map for values for multiple keys. If key is not found then its set as nil.
+func (s *Store) GetMulti(id string, keys ...string) (map[string]interface{}, error) {
+	allKeys := append([]string{defaultSessKey}, keys...)
+	vals, err := s.client.HMGet(s.clientCtx, s.prefix+id, allKeys...).Result()
+	if err != nil {
+		return nil, err
+	}
+
+	if vals[0] == nil {
+		return nil, ErrInvalidSession
+	}
+
 	// Form a map with returned results
 	res := make(map[string]interface{})
-	for i, k := range keys {
-		if v[i] == nil {
-			res[k] = ErrFieldNotFound
-		} else {
-			res[k] = v[i]
+	for i, k := range allKeys {
+		if k != defaultSessKey {
+			res[k] = vals[i]
 		}
 	}
 
@@ -155,187 +128,272 @@ func (s *Store) GetMulti(id string, keys ...string) (map[string]interface{}, err
 
 // GetAll gets all fields from hashmap.
 func (s *Store) GetAll(id string) (map[string]interface{}, error) {
-	if !validateID(id) {
-		return nil, ErrInvalidSession
-	}
-
-	pipe := s.client.TxPipeline()
-	exists := pipe.Exists(s.clientCtx, s.prefix+id)
-	get := pipe.HGetAll(s.clientCtx, s.prefix+id)
-	_, err := pipe.Exec(s.clientCtx)
-	// redis.Nil is returned if a field does not exist.
-	// Ignore the error and check for key existence check.
-	if err != nil && err != redis.Nil {
-		return nil, err
-	}
-
-	// Check if key exists and return ErrInvalidSession if not.
-	if ex, err := exists.Result(); err != nil {
-		return nil, err
-	} else if ex == 0 {
-		return nil, ErrInvalidSession
-	}
-
-	res, err := get.Result()
+	vals, err := s.client.HGetAll(s.clientCtx, s.prefix+id).Result()
 	if err != nil {
 		return nil, err
 	}
 
 	// Convert results to type `map[string]interface{}`
-	out := make(map[string]interface{}, len(res))
-	for k, v := range res {
-		out[k] = v
+	out := make(map[string]interface{})
+	for k, v := range vals {
+		if k != defaultSessKey {
+			out[k] = v
+		}
 	}
 
 	return out, nil
 }
 
 // Set sets a value to given session.
+// If session is not present in backend then its still written.
 func (s *Store) Set(id, key string, val interface{}) error {
-	if !validateID(id) {
-		return ErrInvalidSession
-	}
-
-	pipe := s.client.TxPipeline()
-	pipe.HSet(s.clientCtx, s.prefix+id, key, val)
+	p := s.client.TxPipeline()
+	p.HSet(s.clientCtx, s.prefix+id, key, val)
+	p.HSet(s.clientCtx, s.prefix+id, defaultSessKey, "1")
 
 	// Set expiry of key only if 'ttl' is set, this is to
 	// ensure that the key remains valid indefinitely like
 	// how redis handles it by default
-	if s.ttl > 0 {
-		pipe.Expire(s.clientCtx, s.prefix+id, s.ttl)
+	if s.ttl > 0 && s.extendTTL {
+		p.Expire(s.clientCtx, s.prefix+id, s.ttl)
 	}
 
-	_, err := pipe.Exec(s.clientCtx)
+	_, err := p.Exec(s.clientCtx)
 	return err
 }
 
 // Set sets a value to given session.
 func (s *Store) SetMulti(id string, data map[string]interface{}) error {
-	if !validateID(id) {
-		return ErrInvalidSession
-	}
-
 	// Make slice of arguments to be passed in HGETALL command
-	args := []interface{}{}
+	args := []interface{}{defaultSessKey, "1"}
 	for k, v := range data {
 		args = append(args, k, v)
 	}
 
-	pipe := s.client.TxPipeline()
-	pipe.HMSet(s.clientCtx, s.prefix+id, args...)
+	p := s.client.TxPipeline()
+	p.HMSet(s.clientCtx, s.prefix+id, args...)
 	// Set expiry of key only if 'ttl' is set, this is to
 	// ensure that the key remains valid indefinitely like
 	// how redis handles it by default
-	if s.ttl > 0 {
-		pipe.Expire(s.clientCtx, s.prefix+id, s.ttl)
+	if s.ttl > 0 && s.extendTTL {
+		p.Expire(s.clientCtx, s.prefix+id, s.ttl)
 	}
 
-	_, err := pipe.Exec(s.clientCtx)
+	_, err := p.Exec(s.clientCtx)
 	return err
 }
 
 // Delete deletes a key from redis session hashmap.
 func (s *Store) Delete(id string, key string) error {
-	if !validateID(id) {
-		return ErrInvalidSession
-	}
-
-	pipe := s.client.TxPipeline()
-	exists := pipe.Exists(s.clientCtx, s.prefix+id)
-	del := pipe.HDel(s.clientCtx, s.prefix+id, key)
-	_, err := pipe.Exec(s.clientCtx)
-	// redis.Nil is returned if a field does not exist.
-	// Ignore the error and check for key existence check.
-	if err != nil && err != redis.Nil {
-		return err
-	}
-
-	// Check if key exists and return ErrInvalidSession if not.
-	if ex, err := exists.Result(); err != nil {
-		return err
-	} else if ex == 0 {
-		return ErrInvalidSession
-	}
-
-	if v, err := del.Result(); err != nil {
-		return err
-	} else if v == 0 {
-		return ErrFieldNotFound
-	}
-
-	return nil
+	return s.client.HDel(s.clientCtx, s.prefix+id, key).Err()
 }
 
 // Clear clears session in redis.
 func (s *Store) Clear(id string) error {
-	if !validateID(id) {
-		return ErrInvalidSession
-	}
-
 	return s.client.Del(s.clientCtx, s.prefix+id).Err()
 }
 
-// Int returns redis reply as integer.
+// Int converts interface to integer.
 func (s *Store) Int(r interface{}, err error) (int, error) {
-	return conv.Int(r, err)
-}
-
-// Int64 returns redis reply as Int64.
-func (s *Store) Int64(r interface{}, err error) (int64, error) {
-	return conv.Int64(r, err)
-}
-
-// UInt64 returns redis reply as UInt64.
-func (s *Store) UInt64(r interface{}, err error) (uint64, error) {
-	return conv.UInt64(r, err)
-}
-
-// Float64 returns redis reply as Float64.
-func (s *Store) Float64(r interface{}, err error) (float64, error) {
-	return conv.Float64(r, err)
-}
-
-// String returns redis reply as String.
-func (s *Store) String(r interface{}, err error) (string, error) {
-	return conv.String(r, err)
-}
-
-// Bytes returns redis reply as Bytes.
-func (s *Store) Bytes(r interface{}, err error) ([]byte, error) {
-	return conv.Bytes(r, err)
-}
-
-// Bool returns redis reply as Bool.
-func (s *Store) Bool(r interface{}, err error) (bool, error) {
-	return conv.Bool(r, err)
-}
-
-func validateID(id string) bool {
-	if len(id) != sessionIDLen {
-		return false
+	if err != nil {
+		return 0, err
 	}
 
-	for _, r := range id {
-		if !unicode.IsDigit(r) && !unicode.IsLetter(r) {
-			return false
+	switch r := r.(type) {
+	case int:
+		return r, nil
+	case int64:
+		if x := int(r); int64(x) != r {
+			return 0, ErrAssertType
+		} else {
+			return x, nil
 		}
+	case []byte:
+		if n, err := strconv.ParseInt(string(r), 10, 0); err != nil {
+			return 0, ErrAssertType
+		} else {
+			return int(n), nil
+		}
+	case string:
+		if n, err := strconv.ParseInt(r, 10, 0); err != nil {
+			return 0, ErrAssertType
+		} else {
+			return int(n), nil
+		}
+	case nil:
+		return 0, ErrNil
+	case error:
+		return 0, r
 	}
 
-	return true
+	return 0, ErrAssertType
 }
 
-// generateID generates a random alpha-num session ID.
-func generateID(n int) (string, error) {
-	const dict = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
-	bytes := make([]byte, n)
-	if _, err := rand.Read(bytes); err != nil {
+// Int64 converts interface to Int64.
+func (s *Store) Int64(r interface{}, err error) (int64, error) {
+	if err != nil {
+		return 0, err
+	}
+
+	switch r := r.(type) {
+	case int:
+		return int64(r), nil
+	case int64:
+		return r, nil
+	case []byte:
+		if n, err := strconv.ParseInt(string(r), 10, 64); err != nil {
+			return 0, ErrAssertType
+		} else {
+			return n, nil
+		}
+	case string:
+		if n, err := strconv.ParseInt(r, 10, 64); err != nil {
+			return 0, ErrAssertType
+		} else {
+			return n, nil
+		}
+	case nil:
+		return 0, ErrNil
+	case error:
+		return 0, r
+	}
+
+	return 0, ErrAssertType
+}
+
+// UInt64 converts interface to UInt64.
+func (s *Store) UInt64(r interface{}, err error) (uint64, error) {
+	if err != nil {
+		return 0, err
+	}
+
+	switch r := r.(type) {
+	case uint64:
+		return r, nil
+	case int:
+		if r < 0 {
+			return 0, ErrAssertType
+		}
+		return uint64(r), nil
+	case int64:
+		if r < 0 {
+			return 0, ErrAssertType
+		}
+		return uint64(r), nil
+	case []byte:
+		if n, err := strconv.ParseUint(string(r), 10, 64); err != nil {
+			return 0, ErrAssertType
+		} else {
+			return n, nil
+		}
+	case string:
+		if n, err := strconv.ParseUint(r, 10, 64); err != nil {
+			return 0, ErrAssertType
+		} else {
+			return n, nil
+		}
+	case nil:
+		return 0, ErrNil
+	case error:
+		return 0, r
+	}
+
+	return 0, ErrAssertType
+}
+
+// Float64 converts interface to Float64.
+func (s *Store) Float64(r interface{}, err error) (float64, error) {
+	if err != nil {
+		return 0, err
+	}
+	switch r := r.(type) {
+	case float64:
+		return r, err
+	case []byte:
+		if n, err := strconv.ParseFloat(string(r), 64); err != nil {
+			return 0, ErrAssertType
+		} else {
+			return n, nil
+		}
+	case string:
+		if n, err := strconv.ParseFloat(r, 64); err != nil {
+			return 0, ErrAssertType
+		} else {
+			return n, nil
+		}
+	case nil:
+		return 0, ErrNil
+	case error:
+		return 0, r
+	}
+	return 0, ErrAssertType
+}
+
+// String converts interface to String.
+func (s *Store) String(r interface{}, err error) (string, error) {
+	if err != nil {
 		return "", err
 	}
-
-	for k, v := range bytes {
-		bytes[k] = dict[v%byte(len(dict))]
+	switch r := r.(type) {
+	case []byte:
+		return string(r), nil
+	case string:
+		return r, nil
+	case nil:
+		return "", ErrNil
+	case error:
+		return "", r
 	}
+	return "", ErrAssertType
+}
 
-	return string(bytes), nil
+// Bytes converts interface to Bytes.
+func (s *Store) Bytes(r interface{}, err error) ([]byte, error) {
+	if err != nil {
+		return nil, err
+	}
+	switch r := r.(type) {
+	case []byte:
+		return r, nil
+	case string:
+		return []byte(r), nil
+	case nil:
+		return nil, ErrNil
+	case error:
+		return nil, r
+	}
+	return nil, ErrAssertType
+}
+
+// Bool converts interface to Bool.
+func (s *Store) Bool(r interface{}, err error) (bool, error) {
+	if err != nil {
+		return false, err
+	}
+	switch r := r.(type) {
+	case bool:
+		return r, err
+	// Very common in redis to reply int64 with 0 for bool flag.
+	case int:
+		return r != 0, nil
+	case int64:
+		return r != 0, nil
+	case []byte:
+		if n, err := strconv.ParseBool(string(r)); err != nil {
+			return false, ErrAssertType
+		} else {
+			return n, nil
+		}
+	case string:
+		if n, err := strconv.ParseBool(r); err != nil {
+			return false, ErrAssertType
+		} else {
+			return n, nil
+		}
+	case nil:
+		return false, ErrNil
+	case error:
+		return false, r
+	}
+	return false, ErrAssertType
 }
