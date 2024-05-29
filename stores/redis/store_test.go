@@ -1,12 +1,13 @@
-package redis
+package goredis
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
-	"github.com/gomodule/redigo/redis"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -22,156 +23,136 @@ func init() {
 	}
 }
 
-func getRedisPool() *redis.Pool {
-	return &redis.Pool{
-		Wait: true,
-		Dial: func() (redis.Conn, error) {
-			c, err := redis.Dial(
-				"tcp",
-				mockRedis.Addr(),
-			)
-
-			return c, err
-		},
-	}
+func getRedisClient() redis.UniversalClient {
+	return redis.NewClient(&redis.Options{
+		Addr: mockRedis.Addr(),
+	})
 }
 
 func TestNew(t *testing.T) {
-	assert := assert.New(t)
-	rPool := getRedisPool()
-	str := New(rPool)
-	assert.Equal(str.prefix, defaultPrefix)
-	assert.Equal(str.pool, rPool)
-	assert.NotNil(str.tempSetMap)
+	client := getRedisClient()
+	ctx := context.Background()
+	str := New(ctx, client)
+	assert.Equal(t, str.prefix, defaultPrefix)
+	assert.Equal(t, str.client, client)
+	assert.Equal(t, str.clientCtx, ctx)
 }
 
 func TestSetPrefix(t *testing.T) {
-	assert := assert.New(t)
-	str := New(getRedisPool())
+	str := New(context.TODO(), getRedisClient())
 	str.SetPrefix("test")
-	assert.Equal(str.prefix, "test")
+	assert.Equal(t, str.prefix, "test")
 }
 
 func TestSetTTL(t *testing.T) {
-	assert := assert.New(t)
 	testDur := time.Second * 10
-	str := New(getRedisPool())
+	str := New(context.TODO(), getRedisClient())
 	str.SetTTL(testDur)
-	assert.Equal(str.ttl, testDur)
+	assert.Equal(t, str.ttl, testDur)
 }
 
 func TestCreate(t *testing.T) {
-	assert := assert.New(t)
-	str := New(getRedisPool())
-
+	str := New(context.TODO(), getRedisClient())
 	id, err := str.Create()
-	assert.Nil(err)
-	assert.Equal(len(id), sessionIDLen)
-}
-
-func TestGetInvalidSessionError(t *testing.T) {
-	assert := assert.New(t)
-	str := New(getRedisPool())
-
-	val, err := str.Get("invalidkey", "invalidkey")
-	assert.Nil(val)
-	assert.Error(err, ErrInvalidSession.Error())
+	assert.Nil(t, err)
+	assert.Equal(t, len(id), sessionIDLen)
 }
 
 func TestGet(t *testing.T) {
-	assert := assert.New(t)
 	key := "4dIHy6S2uBuKaNnTUszB218L898ikGY1"
 	field := "somekey"
 	value := 100
-	redisPool := getRedisPool()
+	client := getRedisClient()
 
 	// Set a key
-	conn := redisPool.Get()
-	defer conn.Close()
-	_, err := conn.Do("HSET", defaultPrefix+key, field, value)
-	assert.NoError(err)
+	err := client.HSet(context.TODO(), defaultPrefix+key, field, value).Err()
+	assert.NoError(t, err)
 
-	str := New(redisPool)
+	str := New(context.TODO(), client)
 
-	val, err := redis.Int(str.Get(key, field))
-	assert.NoError(err)
-	assert.Equal(val, value)
+	val, err := str.Int(str.Get(key, field))
+	assert.NoError(t, err)
+	assert.Equal(t, val, value)
+
+	// Check for invalid key.
+	_, err = str.Int(str.Get(key, "invalidfield"))
+	assert.ErrorIs(t, ErrFieldNotFound, err)
 }
 
-func TestGetFieldNotFoundError(t *testing.T) {
-	assert := assert.New(t)
-	str := New(getRedisPool())
+func TestGetInvalidSession(t *testing.T) {
+	str := New(context.TODO(), getRedisClient())
+	val, err := str.Get("invalidkey", "invalidkey")
+	assert.Nil(t, val)
+	assert.ErrorIs(t, err, ErrInvalidSession)
 
-	key := "10IHy6S2uBuKaNnTUszB218L898ikGY1"
-	val, err := str.Get(key, "invalidkey")
-	assert.Nil(val)
-	assert.Error(err, ErrFieldNotFound.Error())
+	id := "10IHy6S2uBuKaNnTUszB218L898ikGY1"
+	val, err = str.Get(id, "invalidkey")
+	assert.Nil(t, val)
+	assert.ErrorIs(t, ErrInvalidSession, err)
 }
 
-func TestGetMultiInvalidSessionError(t *testing.T) {
-	assert := assert.New(t)
-	str := New(getRedisPool())
-
+func TestGetMultiInvalidSession(t *testing.T) {
+	str := New(context.TODO(), getRedisClient())
 	val, err := str.GetMulti("invalidkey", "invalidkey")
-	assert.Nil(val)
-	assert.Error(err, ErrInvalidSession.Error())
-}
-
-func TestGetMultiFieldEmptySession(t *testing.T) {
-	assert := assert.New(t)
-	str := New(getRedisPool())
+	assert.Nil(t, val)
+	assert.ErrorIs(t, ErrInvalidSession, err)
 
 	key := "11IHy6S2uBuKaNnTUszB218L898ikGY1"
 	field := "somefield"
-	_, err := str.GetMulti(key, field)
-	assert.Nil(err)
+	_, err = str.GetMulti(key, field)
+	assert.ErrorIs(t, err, ErrInvalidSession)
 }
 
 func TestGetMulti(t *testing.T) {
-	assert := assert.New(t)
-	key := "5dIHy6S2uBuKaNnTUszB218L898ikGY1"
-	field1 := "somekey"
-	value1 := 100
-	field2 := "someotherkey"
-	value2 := "abc123"
-	field3 := "thishouldntbethere"
-	value3 := 100.10
-	redisPool := getRedisPool()
+	var (
+		key          = "5dIHy6S2uBuKaNnTUszB218L898ikGY1"
+		field1       = "somekey"
+		value1       = 100
+		field2       = "someotherkey"
+		value2       = "abc123"
+		field3       = "thishouldntbethere"
+		value3       = 100.10
+		invalidField = "foo"
+		client       = getRedisClient()
+	)
 
 	// Set a key
-	conn := redisPool.Get()
-	defer conn.Close()
-	_, err := conn.Do("HMSET", defaultPrefix+key, field1, value1, field2, value2, field3, value3)
-	assert.NoError(err)
+	err := client.HMSet(context.TODO(), defaultPrefix+key, field1, value1, field2, value2, field3, value3).Err()
+	assert.NoError(t, err)
 
-	str := New(redisPool)
+	str := New(context.TODO(), client)
+	vals, err := str.GetMulti(key, field1, field2, invalidField)
+	assert.NoError(t, err)
+	assert.Contains(t, vals, field1)
+	assert.Contains(t, vals, field2)
+	assert.NotContains(t, vals, field3)
 
-	vals, err := str.GetMulti(key, field1, field2)
-	assert.NoError(err)
-	assert.Contains(vals, field1)
-	assert.Contains(vals, field2)
-	assert.NotContains(vals, field3)
+	val1, err := str.Int(vals[field1], nil)
+	assert.NoError(t, err)
+	assert.Equal(t, val1, value1)
 
-	val1, err := redis.Int(vals[field1], nil)
-	assert.NoError(err)
-	assert.Equal(val1, value1)
+	val2, err := str.String(vals[field2], nil)
+	assert.NoError(t, err)
+	assert.Equal(t, val2, value2)
 
-	val2, err := redis.String(vals[field2], nil)
-	assert.NoError(err)
-	assert.Equal(val2, value2)
+	// Check for invalid key.
+	_, err = str.String(vals[invalidField], nil)
+	assert.ErrorIs(t, ErrFieldNotFound, err)
 }
 
-func TestGetAllInvalidSessionError(t *testing.T) {
-	assert := assert.New(t)
-	str := New(getRedisPool())
-
+func TestGetAllInvalidSession(t *testing.T) {
+	str := New(context.TODO(), getRedisClient())
 	val, err := str.GetAll("invalidkey")
-	assert.Nil(val)
-	assert.Error(err, ErrInvalidSession.Error())
+	assert.Nil(t, val)
+	assert.ErrorIs(t, ErrInvalidSession, err)
+
+	key := "11IHy6S2uBuKaNnTUszB218L898ikGY1"
+	val, err = str.GetAll(key)
+	assert.Nil(t, val)
+	assert.ErrorIs(t, ErrInvalidSession, err)
 }
 
 func TestGetAll(t *testing.T) {
-	assert := assert.New(t)
 	key := "6dIHy6S2uBuKaNnTUszB218L898ikGY1"
 	field1 := "somekey"
 	value1 := 100
@@ -179,136 +160,116 @@ func TestGetAll(t *testing.T) {
 	value2 := "abc123"
 	field3 := "thishouldntbethere"
 	value3 := 100.10
-	redisPool := getRedisPool()
+	client := getRedisClient()
 
 	// Set a key
-	conn := redisPool.Get()
-	defer conn.Close()
-	_, err := conn.Do("HMSET", defaultPrefix+key, field1, value1, field2, value2, field3, value3)
-	assert.NoError(err)
+	err := client.HMSet(context.TODO(), defaultPrefix+key, field1, value1, field2, value2, field3, value3).Err()
+	assert.NoError(t, err)
 
-	str := New(redisPool)
+	str := New(context.TODO(), client)
 
 	vals, err := str.GetAll(key)
-	assert.NoError(err)
-	assert.Contains(vals, field1)
-	assert.Contains(vals, field2)
-	assert.Contains(vals, field3)
+	assert.NoError(t, err)
+	assert.Contains(t, vals, field1)
+	assert.Contains(t, vals, field2)
+	assert.Contains(t, vals, field3)
 
-	val1, err := redis.Int(vals[field1], nil)
-	assert.NoError(err)
-	assert.Equal(val1, value1)
+	val1, err := str.Int(vals[field1], nil)
+	assert.NoError(t, err)
+	assert.Equal(t, val1, value1)
 
-	val2, err := redis.String(vals[field2], nil)
-	assert.NoError(err)
-	assert.Equal(val2, value2)
+	val2, err := str.String(vals[field2], nil)
+	assert.NoError(t, err)
+	assert.Equal(t, val2, value2)
 
-	val3, err := redis.Float64(vals[field3], nil)
-	assert.NoError(err)
-	assert.Equal(val3, value3)
+	val3, err := str.Float64(vals[field3], nil)
+	assert.NoError(t, err)
+	assert.Equal(t, val3, value3)
 }
 
 func TestSetInvalidSessionError(t *testing.T) {
-	assert := assert.New(t)
-	str := New(getRedisPool())
-
+	str := New(context.TODO(), getRedisClient())
 	err := str.Set("invalidid", "key", "value")
-	assert.Error(err, ErrInvalidSession.Error())
+	assert.ErrorIs(t, ErrInvalidSession, err)
 }
 
 func TestSet(t *testing.T) {
 	// Test should only set in internal map and not in redis
-	assert := assert.New(t)
-	redisPool := getRedisPool()
-	str := New(redisPool)
+	client := getRedisClient()
+	str := New(context.TODO(), client)
+	ttl := time.Second * 10
+	str.SetTTL(ttl)
 
 	// this key is unique across all tests
 	key := "7dIHy6S2uBuKaNnTUszB218L898ikGY9"
 	field := "somekey"
 	value := 100
 
-	assert.NotNil(str.tempSetMap)
-	assert.NotContains(str.tempSetMap, key)
-
 	err := str.Set(key, field, value)
-	assert.NoError(err)
-	assert.Contains(str.tempSetMap, key)
-	assert.Contains(str.tempSetMap[key], field)
-	assert.Equal(str.tempSetMap[key][field], value)
+	assert.NoError(t, err)
 
 	// Check ifs not commited to redis
-	conn := redisPool.Get()
-	defer conn.Close()
-	val, err := conn.Do("TTL", defaultPrefix+key)
-	assert.NoError(err)
-	// -2 represents key doesn't exist
-	assert.Equal(val, int64(-2))
+	v1, err := client.Exists(context.TODO(), defaultPrefix+key).Result()
+	assert.NoError(t, err)
+	assert.Equal(t, int64(1), v1)
+
+	v2, err := str.Int(client.HGet(context.TODO(), defaultPrefix+key, field).Result())
+	assert.NoError(t, err)
+	assert.Equal(t, value, v2)
+
+	dur, err := client.TTL(context.TODO(), defaultPrefix+key).Result()
+	assert.NoError(t, err)
+	assert.Equal(t, dur, ttl)
 }
 
-func TestCommitInvalidSessionError(t *testing.T) {
-	assert := assert.New(t)
-	str := New(getRedisPool())
-
-	err := str.Commit("invalidkey")
-	assert.Error(err, ErrInvalidSession.Error())
-}
-
-func TestEmptyCommit(t *testing.T) {
-	assert := assert.New(t)
-	str := New(getRedisPool())
-
-	err := str.Commit("15IHy6S2uBuKaNnTUszB2180898ikGY1")
-	assert.NoError(err)
-}
-
-func TestCommit(t *testing.T) {
-	// Test should commit in redis with expiry on key
-	assert := assert.New(t)
-	redisPool := getRedisPool()
-	str := New(redisPool)
-
-	str.SetTTL(10 * time.Second)
+func TestSetMulti(t *testing.T) {
+	// Test should only set in internal map and not in redis
+	client := getRedisClient()
+	str := New(context.TODO(), client)
+	ttl := time.Second * 10
+	str.SetTTL(ttl)
 
 	// this key is unique across all tests
-	key := "8dIHy6S2uBuKaNnTUszB2180898ikGY1"
-	field1 := "somekey"
+	key := "7dIHy6S2uBuKaNnTUszB218L898ikGY9"
+	field1 := "somekey1"
 	value1 := 100
-	field2 := "someotherkey"
-	value2 := "abc123"
+	field2 := "somekey2"
+	value2 := "somevalue"
 
-	err := str.Set(key, field1, value1)
-	assert.NoError(err)
+	err := str.SetMulti(key, map[string]interface{}{
+		field1: value1,
+		field2: value2,
+	})
+	assert.NoError(t, err)
 
-	err = str.Set(key, field2, value2)
-	assert.NoError(err)
+	// Check ifs not commited to redis
+	v1, err := client.Exists(context.TODO(), defaultPrefix+key).Result()
+	assert.NoError(t, err)
+	assert.Equal(t, int64(1), v1)
 
-	err = str.Commit(key)
-	assert.NoError(err)
+	v2, err := str.Int(client.HGet(context.TODO(), defaultPrefix+key, field1).Result())
+	assert.NoError(t, err)
+	assert.Equal(t, value1, v2)
 
-	conn := redisPool.Get()
-	defer conn.Close()
-	vals, err := redis.Values(conn.Do("HGETALL", defaultPrefix+key))
-	assert.Equal(2*2, len(vals))
-
-	ttl, err := redis.Int(conn.Do("TTL", defaultPrefix+key))
-	assert.NoError(err)
-
-	assert.Equal(true, ttl > 0 && ttl <= 10)
+	dur, err := client.TTL(context.TODO(), defaultPrefix+key).Result()
+	assert.NoError(t, err)
+	assert.Equal(t, dur, ttl)
 }
 
 func TestDeleteInvalidSessionError(t *testing.T) {
-	assert := assert.New(t)
-	str := New(getRedisPool())
-
+	str := New(context.TODO(), getRedisClient())
 	err := str.Delete("invalidkey", "somefield")
-	assert.Error(err, ErrInvalidSession.Error())
+	assert.ErrorIs(t, ErrInvalidSession, err)
+
+	str = New(context.TODO(), getRedisClient())
+	err = str.Delete("8dIHy6S2uBuKaNnTUszB2180898ikGY1", "somefield")
+	assert.ErrorIs(t, ErrInvalidSession, err)
 }
 
 func TestDelete(t *testing.T) {
 	// Test should only set in internal map and not in redis
-	assert := assert.New(t)
-	redisPool := getRedisPool()
-	str := New(redisPool)
+	client := getRedisClient()
+	str := New(context.TODO(), client)
 
 	// this key is unique across all tests
 	key := "8dIHy6S2uBuKaNnTUszB2180898ikGY1"
@@ -317,34 +278,34 @@ func TestDelete(t *testing.T) {
 	field2 := "someotherkey"
 	value2 := "abc123"
 
-	conn := redisPool.Get()
-	defer conn.Close()
-	_, err := conn.Do("HMSET", defaultPrefix+key, field1, value1, field2, value2)
-	assert.NoError(err)
+	err := client.HMSet(context.TODO(), defaultPrefix+key, field1, value1, field2, value2).Err()
+	assert.NoError(t, err)
 
 	err = str.Delete(key, field1)
-	assert.NoError(err)
+	assert.NoError(t, err)
 
-	val, err := redis.Bool(conn.Do("HEXISTS", defaultPrefix+key, field1))
-	assert.False(val)
+	val, err := client.HExists(context.TODO(), defaultPrefix+key, field1).Result()
+	assert.False(t, val)
+	assert.NoError(t, err)
 
-	val, err = redis.Bool(conn.Do("HEXISTS", defaultPrefix+key, field2))
-	assert.True(val)
+	val, err = client.HExists(context.TODO(), defaultPrefix+key, field2).Result()
+	assert.True(t, val)
+	assert.NoError(t, err)
+
+	err = str.Delete(key, "xxxxx")
+	assert.ErrorIs(t, err, ErrFieldNotFound)
 }
 
 func TestClearInvalidSessionError(t *testing.T) {
-	assert := assert.New(t)
-	str := New(getRedisPool())
-
+	str := New(context.TODO(), getRedisClient())
 	err := str.Clear("invalidkey")
-	assert.Error(err, ErrInvalidSession.Error())
+	assert.ErrorIs(t, ErrInvalidSession, err)
 }
 
 func TestClear(t *testing.T) {
 	// Test should only set in internal map and not in redis
-	assert := assert.New(t)
-	redisPool := getRedisPool()
-	str := New(redisPool)
+	client := getRedisClient()
+	str := New(context.TODO(), client)
 
 	// this key is unique across all tests
 	key := "8dIHy6S2uBuKaNnTUszB2180898ikGY1"
@@ -353,219 +314,164 @@ func TestClear(t *testing.T) {
 	field2 := "someotherkey"
 	value2 := "abc123"
 
-	conn := redisPool.Get()
-	defer conn.Close()
-	_, err := conn.Do("HMSET", defaultPrefix+key, field1, value1, field2, value2)
-	assert.NoError(err)
+	err := client.HMSet(context.TODO(), defaultPrefix+key, field1, value1, field2, value2).Err()
+	assert.NoError(t, err)
 
 	// Check if its set
-	val, err := conn.Do("TTL", defaultPrefix+key)
-	assert.NoError(err)
-	// -2 represents key doesn't exist
-	assert.NotEqual(val, int64(-2))
+	val, err := client.Exists(context.TODO(), defaultPrefix+key).Result()
+	assert.NoError(t, err)
+	assert.NotEqual(t, val, int64(0))
 
 	err = str.Clear(key)
-	assert.NoError(err)
+	assert.NoError(t, err)
 
-	val, err = conn.Do("TTL", defaultPrefix+key)
-	assert.NoError(err)
-	// -2 represents key doesn't exist
-	assert.Equal(val, int64(-2))
-}
-
-func TestInterfaceMap(t *testing.T) {
-	assert := assert.New(t)
-	redisPool := getRedisPool()
-	str := New(redisPool)
-
-	// this key is unique across all tests
-	key := "8dIHy6S2uBuKaNnTUszB2180898ikGY1"
-	field1 := "somekey"
-	value1 := 100
-	field2 := "someotherkey"
-	value2 := "abc123"
-
-	conn := redisPool.Get()
-	defer conn.Close()
-	_, err := conn.Do("HMSET", defaultPrefix+key, field1, value1, field2, value2)
-	assert.NoError(err)
-
-	vals, err := str.interfaceMap(conn.Do("HGETALL", defaultPrefix+key))
-	assert.Contains(vals, field1)
-	assert.Contains(vals, field2)
-}
-
-func TestInterfaceMapWithError(t *testing.T) {
-	assert := assert.New(t)
-	redisPool := getRedisPool()
-	str := New(redisPool)
-
-	testError := errors.New("test error")
-	vals, err := str.interfaceMap(nil, testError)
-	assert.Nil(vals)
-	assert.Error(err, testError.Error())
-
-	valsInfSlice := []interface{}{nil, nil, nil}
-	vals, err = str.interfaceMap(valsInfSlice, nil)
-	assert.Nil(vals)
-	assert.Equal(err.Error(), "redigo: StringMap expects even number of values result")
-
-	valsInfSlice = []interface{}{"abc123", 123}
-	vals, err = str.interfaceMap(valsInfSlice, nil)
-	assert.Nil(vals)
-	assert.Equal(err.Error(), "redigo: StringMap key not a bulk string value")
+	val, err = client.Exists(context.TODO(), defaultPrefix+key).Result()
+	assert.NoError(t, err)
+	assert.Equal(t, val, int64(0))
 }
 
 func TestInt(t *testing.T) {
-	assert := assert.New(t)
-	redisPool := getRedisPool()
-	str := New(redisPool)
+	client := getRedisClient()
+	str := New(context.TODO(), client)
 
 	field := "somekey"
 	value := 100
 
-	conn := redisPool.Get()
-	defer conn.Close()
-	_, err := conn.Do("SET", field, value)
-	assert.NoError(err)
+	err := client.Set(context.TODO(), field, value, 0).Err()
+	assert.NoError(t, err)
 
-	val, err := str.Int(conn.Do("GET", field))
-	assert.NoError(err)
-	assert.Equal(value, val)
+	val, err := str.Int(client.Get(context.TODO(), field).Result())
+	assert.NoError(t, err)
+	assert.Equal(t, value, val)
 
 	testError := errors.New("test error")
-	val, err = str.Int(value, testError)
-	assert.Error(err, testError.Error())
+	_, err = str.Int(value, testError)
+	assert.ErrorIs(t, testError, err)
 }
 
 func TestInt64(t *testing.T) {
-	assert := assert.New(t)
-	redisPool := getRedisPool()
-	str := New(redisPool)
+	client := getRedisClient()
+	str := New(context.TODO(), client)
 
 	field := "somekey"
 	var value int64 = 100
 
-	conn := redisPool.Get()
-	defer conn.Close()
-	_, err := conn.Do("SET", field, value)
-	assert.NoError(err)
+	err := client.Set(context.TODO(), field, value, 0).Err()
+	assert.NoError(t, err)
 
-	val, err := str.Int64(conn.Do("GET", field))
-	assert.NoError(err)
-	assert.Equal(value, val)
+	val, err := str.Int64(client.Get(context.TODO(), field).Result())
+	assert.NoError(t, err)
+	assert.Equal(t, value, val)
 
 	testError := errors.New("test error")
-	val, err = str.Int64(value, testError)
-	assert.Error(err, testError.Error())
+	_, err = str.Int64(value, testError)
+	assert.ErrorIs(t, testError, err)
 }
 
 func TestUInt64(t *testing.T) {
-	assert := assert.New(t)
-	redisPool := getRedisPool()
-	str := New(redisPool)
+	client := getRedisClient()
+	str := New(context.TODO(), client)
 
 	field := "somekey"
 	var value uint64 = 100
 
-	conn := redisPool.Get()
-	defer conn.Close()
-	_, err := conn.Do("SET", field, value)
-	assert.NoError(err)
+	err := client.Set(context.TODO(), field, value, 0).Err()
+	assert.NoError(t, err)
 
-	val, err := str.UInt64(conn.Do("GET", field))
-	assert.NoError(err)
-	assert.Equal(value, val)
+	val, err := str.UInt64(client.Get(context.TODO(), field).Result())
+	assert.NoError(t, err)
+	assert.Equal(t, value, val)
 
 	testError := errors.New("test error")
-	val, err = str.UInt64(value, testError)
-	assert.Error(err, testError.Error())
+	_, err = str.UInt64(value, testError)
+	assert.ErrorIs(t, testError, err)
 }
 
 func TestFloat64(t *testing.T) {
-	assert := assert.New(t)
-	redisPool := getRedisPool()
-	str := New(redisPool)
+	client := getRedisClient()
+	str := New(context.TODO(), client)
 
 	field := "somekey"
 	var value float64 = 100
 
-	conn := redisPool.Get()
-	defer conn.Close()
-	_, err := conn.Do("SET", field, value)
-	assert.NoError(err)
+	err := client.Set(context.TODO(), field, value, 0).Err()
+	assert.NoError(t, err)
 
-	val, err := str.Float64(conn.Do("GET", field))
-	assert.NoError(err)
-	assert.Equal(value, val)
+	val, err := str.Float64(client.Get(context.TODO(), field).Result())
+	assert.NoError(t, err)
+	assert.Equal(t, value, val)
 
 	testError := errors.New("test error")
-	val, err = str.Float64(value, testError)
-	assert.Error(err, testError.Error())
+	_, err = str.Float64(value, testError)
+	assert.ErrorIs(t, testError, err)
 }
 
 func TestString(t *testing.T) {
-	assert := assert.New(t)
-	redisPool := getRedisPool()
-	str := New(redisPool)
+	client := getRedisClient()
+	str := New(context.TODO(), client)
 
 	field := "somekey"
 	value := "abc123"
 
-	conn := redisPool.Get()
-	defer conn.Close()
-	_, err := conn.Do("SET", field, value)
-	assert.NoError(err)
+	err := client.Set(context.TODO(), field, value, 0).Err()
+	assert.NoError(t, err)
 
-	val, err := str.String(conn.Do("GET", field))
-	assert.NoError(err)
-	assert.Equal(value, val)
+	val, err := str.String(client.Get(context.TODO(), field).Result())
+	assert.NoError(t, err)
+	assert.Equal(t, value, val)
 
 	testError := errors.New("test error")
-	val, err = str.String(value, testError)
-	assert.Error(err, testError.Error())
+	_, err = str.String(value, testError)
+	assert.ErrorIs(t, testError, err)
 }
 
 func TestBytes(t *testing.T) {
-	assert := assert.New(t)
-	redisPool := getRedisPool()
-	str := New(redisPool)
+	client := getRedisClient()
+	str := New(context.TODO(), client)
 
 	field := "somekey"
 	var value []byte = []byte("abc123")
 
-	conn := redisPool.Get()
-	defer conn.Close()
-	_, err := conn.Do("SET", field, value)
-	assert.NoError(err)
+	err := client.Set(context.TODO(), field, value, 0).Err()
+	assert.NoError(t, err)
 
-	val, err := str.Bytes(conn.Do("GET", field))
-	assert.NoError(err)
-	assert.Equal(value, val)
+	val, err := str.Bytes(client.Get(context.TODO(), field).Result())
+	assert.NoError(t, err)
+	assert.Equal(t, value, val)
 
 	testError := errors.New("test error")
-	val, err = str.Bytes(value, testError)
-	assert.Error(err, testError.Error())
+	_, err = str.Bytes(value, testError)
+	assert.ErrorIs(t, testError, err)
 }
 
 func TestBool(t *testing.T) {
-	assert := assert.New(t)
-	redisPool := getRedisPool()
-	str := New(redisPool)
+	client := getRedisClient()
+	str := New(context.TODO(), client)
 
 	field := "somekey"
 	value := true
 
-	conn := redisPool.Get()
-	defer conn.Close()
-	_, err := conn.Do("SET", field, value)
-	assert.NoError(err)
+	err := client.Set(context.TODO(), field, value, 0).Err()
+	assert.NoError(t, err)
 
-	val, err := str.Bool(conn.Do("GET", field))
-	assert.NoError(err)
-	assert.Equal(value, val)
+	val, err := str.Bool(client.Get(context.TODO(), field).Result())
+	assert.NoError(t, err)
+	assert.Equal(t, value, val)
 
 	testError := errors.New("test error")
-	val, err = str.Bool(value, testError)
-	assert.Error(err, testError.Error())
+	_, err = str.Bool(value, testError)
+	assert.ErrorIs(t, testError, err)
+}
+
+func TestValidateID(t *testing.T) {
+	ok := validateID("xxxx")
+	assert.False(t, ok)
+
+	ok = validateID("8dIHy6S2uBuKaNnTUszB2180898ikGY&")
+	assert.False(t, ok)
+
+	id, err := generateID(sessionIDLen)
+	assert.NoError(t, err)
+	ok = validateID(id)
+	assert.True(t, ok)
 }

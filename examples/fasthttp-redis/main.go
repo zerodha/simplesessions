@@ -8,7 +8,7 @@ import (
 	"github.com/gomodule/redigo/redis"
 	"github.com/valyala/fasthttp"
 	redisstore "github.com/vividvilla/simplesessions/stores/redis/v2"
-	"github.com/vividvilla/simplesessions/v2"
+	"github.com/vividvilla/simplesessions/v3"
 )
 
 var (

@@ -1,13 +1,13 @@
-package redis
+package goredis
 
 import (
+	"context"
 	"crypto/rand"
-	"errors"
-	"sync"
 	"time"
 	"unicode"
 
-	"github.com/gomodule/redigo/redis"
+	"github.com/redis/go-redis/v9"
+	"github.com/vividvilla/simplesessions/conv"
 )
 
 var (
@@ -41,12 +41,9 @@ type Store struct {
 	// Prefix for session id.
 	prefix string
 
-	// Temp map to store values before commit.
-	tempSetMap map[string]map[string]interface{}
-	mu         sync.RWMutex
-
-	// Redis pool
-	pool *redis.Pool
+	// Redis client
+	client    redis.UniversalClient
+	clientCtx context.Context
 }
 
 const (
@@ -56,11 +53,11 @@ const (
 )
 
 // New creates a new Redis store instance.
-func New(pool *redis.Pool) *Store {
+func New(ctx context.Context, client redis.UniversalClient) *Store {
 	return &Store{
-		pool:       pool,
-		prefix:     defaultPrefix,
-		tempSetMap: make(map[string]map[string]interface{}),
+		clientCtx: ctx,
+		client:    client,
+		prefix:    defaultPrefix,
 	}
 }
 
@@ -90,15 +87,29 @@ func (s *Store) Get(id, key string) (interface{}, error) {
 		return nil, ErrInvalidSession
 	}
 
-	conn := s.pool.Get()
-	defer conn.Close()
+	pipe := s.client.TxPipeline()
+	exists := pipe.Exists(s.clientCtx, s.prefix+id)
+	get := pipe.HGet(s.clientCtx, s.prefix+id, key)
+	_, err := pipe.Exec(s.clientCtx)
+	// redis.Nil is returned if a field does not exist.
+	// Ignore the error and check for key existence check.
+	if err != nil && err != redis.Nil {
+		return nil, err
+	}
 
-	v, err := conn.Do("HGET", s.prefix+id, key)
-	if v == nil || err == redis.ErrNil {
+	// Check if key exists and return ErrInvalidSession if not.
+	if ex, err := exists.Result(); err != nil {
+		return nil, err
+	} else if ex == 0 {
+		return nil, ErrInvalidSession
+	}
+
+	v, err := get.Result()
+	if err != nil && err == redis.Nil {
 		return nil, ErrFieldNotFound
 	}
 
-	return v, err
+	return v, nil
 }
 
 // GetMulti gets a map for values for multiple keys. If key is not found then its set as nil.
@@ -107,26 +118,36 @@ func (s *Store) GetMulti(id string, keys ...string) (map[string]interface{}, err
 		return nil, ErrInvalidSession
 	}
 
-	conn := s.pool.Get()
-	defer conn.Close()
-
-	// Make list of args for HMGET
-	args := make([]interface{}, len(keys)+1)
-	args[0] = s.prefix + id
-	for i := range keys {
-		args[i+1] = keys[i]
+	pipe := s.client.TxPipeline()
+	exists := pipe.Exists(s.clientCtx, s.prefix+id)
+	get := pipe.HMGet(s.clientCtx, s.prefix+id, keys...)
+	_, err := pipe.Exec(s.clientCtx)
+	// redis.Nil is returned if a field does not exist.
+	// Ignore the error and check for key existence check.
+	if err != nil && err != redis.Nil {
+		return nil, err
 	}
 
-	v, err := redis.Values(conn.Do("HMGET", args...))
-	// If field is not found then return map with fields as nil
-	if len(v) == 0 || err == redis.ErrNil {
-		v = make([]interface{}, len(keys))
+	// Check if key exists and return ErrInvalidSession if not.
+	if ex, err := exists.Result(); err != nil {
+		return nil, err
+	} else if ex == 0 {
+		return nil, ErrInvalidSession
+	}
+
+	v, err := get.Result()
+	if err != nil {
+		return nil, err
 	}
 
 	// Form a map with returned results
 	res := make(map[string]interface{})
 	for i, k := range keys {
-		res[k] = v[i]
+		if v[i] == nil {
+			res[k] = ErrFieldNotFound
+		} else {
+			res[k] = v[i]
+		}
 	}
 
 	return res, err
@@ -138,89 +159,80 @@ func (s *Store) GetAll(id string) (map[string]interface{}, error) {
 		return nil, ErrInvalidSession
 	}
 
-	conn := s.pool.Get()
-	defer conn.Close()
+	pipe := s.client.TxPipeline()
+	exists := pipe.Exists(s.clientCtx, s.prefix+id)
+	get := pipe.HGetAll(s.clientCtx, s.prefix+id)
+	_, err := pipe.Exec(s.clientCtx)
+	// redis.Nil is returned if a field does not exist.
+	// Ignore the error and check for key existence check.
+	if err != nil && err != redis.Nil {
+		return nil, err
+	}
 
-	return s.interfaceMap(conn.Do("HGETALL", s.prefix+id))
+	// Check if key exists and return ErrInvalidSession if not.
+	if ex, err := exists.Result(); err != nil {
+		return nil, err
+	} else if ex == 0 {
+		return nil, ErrInvalidSession
+	}
+
+	res, err := get.Result()
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert results to type `map[string]interface{}`
+	out := make(map[string]interface{}, len(res))
+	for k, v := range res {
+		out[k] = v
+	}
+
+	return out, nil
 }
 
-// Set sets a value to given session but stored only on commit
+// Set sets a value to given session.
 func (s *Store) Set(id, key string, val interface{}) error {
 	if !validateID(id) {
 		return ErrInvalidSession
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	// Create session map if doesn't exist
-	if _, ok := s.tempSetMap[id]; !ok {
-		s.tempSetMap[id] = make(map[string]interface{})
-	}
-
-	// set value to map
-	s.tempSetMap[id][key] = val
-
-	return nil
-}
-
-// Commit sets all set values
-func (s *Store) Commit(id string) error {
-	if !validateID(id) {
-		return ErrInvalidSession
-	}
-
-	s.mu.RLock()
-	vals, ok := s.tempSetMap[id]
-	if !ok {
-		// Nothing to commit
-		s.mu.RUnlock()
-		return nil
-	}
-
-	// Make slice of arguments to be passed in HGETALL command
-	args := make([]interface{}, len(vals)*2+1, len(vals)*2+1)
-	args[0] = s.prefix + id
-
-	c := 1
-	for k, v := range s.tempSetMap[id] {
-		args[c] = k
-		args[c+1] = v
-		c += 2
-	}
-	s.mu.RUnlock()
-
-	// Clear temp map for given session id
-	s.mu.Lock()
-	delete(s.tempSetMap, id)
-	s.mu.Unlock()
-
-	// Set to redis
-	conn := s.pool.Get()
-	defer conn.Close()
-
-	conn.Send("MULTI")
-	conn.Send("HMSET", args...)
+	pipe := s.client.TxPipeline()
+	pipe.HSet(s.clientCtx, s.prefix+id, key, val)
 
 	// Set expiry of key only if 'ttl' is set, this is to
 	// ensure that the key remains valid indefinitely like
 	// how redis handles it by default
 	if s.ttl > 0 {
-		conn.Send("EXPIRE", args[0], s.ttl.Seconds())
+		pipe.Expire(s.clientCtx, s.prefix+id, s.ttl)
 	}
 
-	res, err := redis.Values(conn.Do("EXEC"))
-	if err != nil {
-		return err
+	_, err := pipe.Exec(s.clientCtx)
+	return err
+}
+
+// Set sets a value to given session.
+func (s *Store) SetMulti(id string, data map[string]interface{}) error {
+	if !validateID(id) {
+		return ErrInvalidSession
 	}
 
-	for _, r := range res {
-		if v, ok := r.(redis.Error); ok {
-			return v
-		}
+	// Make slice of arguments to be passed in HGETALL command
+	args := []interface{}{}
+	for k, v := range data {
+		args = append(args, k, v)
 	}
 
-	return nil
+	pipe := s.client.TxPipeline()
+	pipe.HMSet(s.clientCtx, s.prefix+id, args...)
+	// Set expiry of key only if 'ttl' is set, this is to
+	// ensure that the key remains valid indefinitely like
+	// how redis handles it by default
+	if s.ttl > 0 {
+		pipe.Expire(s.clientCtx, s.prefix+id, s.ttl)
+	}
+
+	_, err := pipe.Exec(s.clientCtx)
+	return err
 }
 
 // Delete deletes a key from redis session hashmap.
@@ -229,16 +241,30 @@ func (s *Store) Delete(id string, key string) error {
 		return ErrInvalidSession
 	}
 
-	// Clear temp map for given session id
-	s.mu.Lock()
-	delete(s.tempSetMap, id)
-	s.mu.Unlock()
+	pipe := s.client.TxPipeline()
+	exists := pipe.Exists(s.clientCtx, s.prefix+id)
+	del := pipe.HDel(s.clientCtx, s.prefix+id, key)
+	_, err := pipe.Exec(s.clientCtx)
+	// redis.Nil is returned if a field does not exist.
+	// Ignore the error and check for key existence check.
+	if err != nil && err != redis.Nil {
+		return err
+	}
 
-	conn := s.pool.Get()
-	defer conn.Close()
+	// Check if key exists and return ErrInvalidSession if not.
+	if ex, err := exists.Result(); err != nil {
+		return err
+	} else if ex == 0 {
+		return ErrInvalidSession
+	}
 
-	_, err := conn.Do("HDEL", s.prefix+id, key)
-	return err
+	if v, err := del.Result(); err != nil {
+		return err
+	} else if v == 0 {
+		return ErrFieldNotFound
+	}
+
+	return nil
 }
 
 // Clear clears session in redis.
@@ -247,70 +273,42 @@ func (s *Store) Clear(id string) error {
 		return ErrInvalidSession
 	}
 
-	conn := s.pool.Get()
-	defer conn.Close()
-
-	_, err := conn.Do("DEL", s.prefix+id)
-	return err
-}
-
-// interfaceMap is a helper method which converts HGETALL reply to map of string interface
-func (s *Store) interfaceMap(result interface{}, err error) (map[string]interface{}, error) {
-	values, err := redis.Values(result, err)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(values)%2 != 0 {
-		return nil, errors.New("redigo: StringMap expects even number of values result")
-	}
-
-	m := make(map[string]interface{}, len(values)/2)
-	for i := 0; i < len(values); i += 2 {
-		key, ok := values[i].([]byte)
-		if !ok {
-			return nil, errors.New("redigo: StringMap key not a bulk string value")
-		}
-
-		m[string(key)] = values[i+1]
-	}
-
-	return m, nil
+	return s.client.Del(s.clientCtx, s.prefix+id).Err()
 }
 
 // Int returns redis reply as integer.
 func (s *Store) Int(r interface{}, err error) (int, error) {
-	return redis.Int(r, err)
+	return conv.Int(r, err)
 }
 
 // Int64 returns redis reply as Int64.
 func (s *Store) Int64(r interface{}, err error) (int64, error) {
-	return redis.Int64(r, err)
+	return conv.Int64(r, err)
 }
 
 // UInt64 returns redis reply as UInt64.
 func (s *Store) UInt64(r interface{}, err error) (uint64, error) {
-	return redis.Uint64(r, err)
+	return conv.UInt64(r, err)
 }
 
 // Float64 returns redis reply as Float64.
 func (s *Store) Float64(r interface{}, err error) (float64, error) {
-	return redis.Float64(r, err)
+	return conv.Float64(r, err)
 }
 
 // String returns redis reply as String.
 func (s *Store) String(r interface{}, err error) (string, error) {
-	return redis.String(r, err)
+	return conv.String(r, err)
 }
 
 // Bytes returns redis reply as Bytes.
 func (s *Store) Bytes(r interface{}, err error) ([]byte, error) {
-	return redis.Bytes(r, err)
+	return conv.Bytes(r, err)
 }
 
 // Bool returns redis reply as Bool.
 func (s *Store) Bool(r interface{}, err error) (bool, error) {
-	return redis.Bool(r, err)
+	return conv.Bool(r, err)
 }
 
 func validateID(id string) bool {

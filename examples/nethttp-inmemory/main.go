@@ -6,7 +6,7 @@ import (
 	"net/http"
 
 	"github.com/vividvilla/simplesessions/stores/memory/v2"
-	"github.com/vividvilla/simplesessions/v2"
+	"github.com/vividvilla/simplesessions/v3"
 )
 
 var (

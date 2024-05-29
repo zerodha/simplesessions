@@ -9,9 +9,8 @@ var (
 	// Error codes for store errors. This should match the codes
 	// defined in the /simplesessions package exactly.
 	ErrInvalidSession = &Err{code: 1, msg: "invalid session"}
-	ErrFieldNotFound  = &Err{code: 2, msg: "field not found"}
+	ErrNil            = &Err{code: 2, msg: "nil returned"}
 	ErrAssertType     = &Err{code: 3, msg: "assertion failed"}
-	ErrNil            = &Err{code: 4, msg: "nil returned"}
 )
 
 type Err struct {

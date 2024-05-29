@@ -3,7 +3,6 @@ go 1.14
 use (
 	.
 	./conv
-	./stores/goredis
 	./stores/memory
 	./stores/redis
 	./stores/securecookie

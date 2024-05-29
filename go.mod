@@ -1,4 +1,4 @@
-module github.com/vividvilla/simplesessions/v2
+module github.com/vividvilla/simplesessions/v3
 
 require github.com/stretchr/testify v1.9.0
 

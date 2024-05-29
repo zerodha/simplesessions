@@ -9,7 +9,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/valyala/fasthttp"
 	redisstore "github.com/vividvilla/simplesessions/stores/goredis/v9"
-	"github.com/vividvilla/simplesessions/v2"
+	"github.com/vividvilla/simplesessions/v3"
 	"github.com/zerodha/fastglue"
 )
 
