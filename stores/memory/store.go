@@ -1,22 +1,15 @@
 package memory
 
 import (
-	"crypto/rand"
 	"sync"
-	"unicode"
-)
-
-const (
-	sessionIDLen = 32
 )
 
 var (
 	// Error codes for store errors. This should match the codes
 	// defined in the /simplesessions package exactly.
 	ErrInvalidSession = &Err{code: 1, msg: "invalid session"}
-	ErrFieldNotFound  = &Err{code: 2, msg: "field not found"}
+	ErrNil            = &Err{code: 2, msg: "nil returned"}
 	ErrAssertType     = &Err{code: 3, msg: "assertion failed"}
-	ErrNil            = &Err{code: 4, msg: "nil returned"}
 )
 
 type Err struct {
@@ -50,34 +43,34 @@ func New() *Store {
 // Create creates a new session id and returns it. This doesn't create the session in
 // sessions map since memory can be saved by not storing empty sessions and system
 // can not be stressed by just creating new sessions
-func (s *Store) Create() (string, error) {
-	id, err := generateID(sessionIDLen)
-	if err != nil {
-		return "", err
+func (s *Store) Create(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Check if session already exists.
+	_, ok := s.sessions[id]
+	if ok {
+		return nil
 	}
 
-	return id, err
+	s.sessions[id] = make(map[string]interface{})
+	return nil
 }
 
 // Get gets a field in session
 func (s *Store) Get(id, key string) (interface{}, error) {
-	if !validateID(id) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	// Check if session exists before accessing key from it.
+	sess, ok := s.sessions[id]
+	if !ok {
 		return nil, ErrInvalidSession
 	}
 
-	var val interface{}
-	s.mu.RLock()
-	// Check if session exists before accessing key from it
-	v, ok := s.sessions[id]
-	if ok && v != nil {
-		val, ok = s.sessions[id][key]
-	}
-	s.mu.RUnlock()
-
-	// If session doesn't exist or field doesn't exist then send field not found error
-	// since we don't add session to sessions map on session create
-	if !ok || v == nil {
-		return nil, ErrFieldNotFound
+	val, ok := sess[key]
+	if !ok {
+		return nil, nil
 	}
 
 	return val, nil
@@ -85,102 +78,100 @@ func (s *Store) Get(id, key string) (interface{}, error) {
 
 // GetMulti gets a map for values for multiple keys. If key is not present in session then nil is returned.
 func (s *Store) GetMulti(id string, keys ...string) (map[string]interface{}, error) {
-	if !validateID(id) {
-		return nil, ErrInvalidSession
-	}
-
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	sVals, ok := s.sessions[id]
-	// If session not set then send a map with value for all keys is nil
-	if sVals == nil || !ok {
-		sVals = make(map[string]interface{})
+	sess, ok := s.sessions[id]
+	if !ok {
+		return nil, ErrInvalidSession
 	}
 
-	res := make(map[string]interface{})
+	out := make(map[string]interface{})
 	for _, k := range keys {
-		v, ok := sVals[k]
+		v, ok := sess[k]
 		if !ok {
-			res[k] = nil
+			out[k] = nil
 		} else {
-			res[k] = v
+			out[k] = v
 		}
 	}
 
-	return res, nil
+	return out, nil
 }
 
 // GetAll gets all fields in session
 func (s *Store) GetAll(id string) (map[string]interface{}, error) {
-	if !validateID(id) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	sess, ok := s.sessions[id]
+	if !ok {
 		return nil, ErrInvalidSession
 	}
 
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	vals := s.sessions[id]
+	// Copy the map.
+	out := make(map[string]interface{})
+	for k, v := range sess {
+		out[k] = v
+	}
 
-	return vals, nil
+	return out, nil
 }
 
-// Set sets a value to given session but stored only on commit
+// Set sets a value to given session.
 func (s *Store) Set(id, key string, val interface{}) error {
-	if !validateID(id) {
-		return ErrInvalidSession
-	}
-
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	// If session is not set previously then create empty map
+
 	_, ok := s.sessions[id]
 	if !ok {
-		s.sessions[id] = make(map[string]interface{})
+		return ErrInvalidSession
 	}
-
 	s.sessions[id][key] = val
-
 	return nil
 }
 
-// Commit does nothing here since Set sets the value.
-func (s *Store) Commit(id string) error {
+// SetMulti sets multiple key value pair to given session.
+func (s *Store) SetMulti(id string, data map[string]interface{}) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	_, ok := s.sessions[id]
+	if !ok {
+		return ErrInvalidSession
+	}
+
+	for k, v := range data {
+		s.sessions[id][k] = v
+	}
+
 	return nil
 }
 
 // Delete deletes a key from session.
 func (s *Store) Delete(id string, key string) error {
-	if !validateID(id) {
-		return ErrInvalidSession
-	}
-
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	_, ok := s.sessions[id]
-	if ok && s.sessions[id] != nil {
-		_, ok = s.sessions[id][key]
-		if ok {
-			delete(s.sessions[id], key)
-		}
+	if !ok {
+		return ErrInvalidSession
 	}
+	delete(s.sessions[id], key)
 
 	return nil
 }
 
 // Clear clears session in redis.
 func (s *Store) Clear(id string) error {
-	if !validateID(id) {
-		return ErrInvalidSession
-	}
-
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	_, ok := s.sessions[id]
-	if ok {
-		delete(s.sessions, id)
+	if !ok {
+		return ErrInvalidSession
 	}
+	delete(s.sessions, id)
 
 	return nil
 }
@@ -281,33 +272,4 @@ func (s *Store) Bool(r interface{}, err error) (bool, error) {
 	}
 
 	return v, err
-}
-
-func validateID(id string) bool {
-	if len(id) != sessionIDLen {
-		return false
-	}
-
-	for _, r := range id {
-		if !unicode.IsDigit(r) && !unicode.IsLetter(r) {
-			return false
-		}
-	}
-
-	return true
-}
-
-// generateID generates a random alpha-num session ID.
-func generateID(n int) (string, error) {
-	const dict = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
-	bytes := make([]byte, n)
-	if _, err := rand.Read(bytes); err != nil {
-		return "", err
-	}
-
-	for k, v := range bytes {
-		bytes[k] = dict[v%byte(len(dict))]
-	}
-
-	return string(bytes), nil
 }
