@@ -201,6 +201,21 @@ func TestClear(t *testing.T) {
 	assert.Equal(t, len(str.sessions[id]), 0)
 }
 
+func TestDestroy(t *testing.T) {
+	// Test should only set in internal map and not in redis
+	str := New()
+	err := str.Destroy("invalidkey")
+	assert.ErrorIs(t, ErrInvalidSession, err)
+
+	// this id is unique across all tests
+	id := "test_id"
+	str.sessions[id] = make(map[string]interface{})
+
+	err = str.Destroy(id)
+	assert.NoError(t, err)
+	assert.NotContains(t, str.sessions, id)
+}
+
 func TestInt(t *testing.T) {
 	str := New()
 

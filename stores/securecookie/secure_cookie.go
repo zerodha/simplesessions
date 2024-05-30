@@ -238,6 +238,13 @@ func (s *Store) Clear(cv string) error {
 	return nil
 }
 
+// Destroy clears the session. Once called, Flush() should be
+// called to retrieve the updated, unflushed values and written to the cookie
+// externally.
+func (s *Store) Destroy(cv string) error {
+	return s.Clear(cv)
+}
+
 // Int is a helper method to type assert as integer
 func (s *Store) Int(r interface{}, err error) (int, error) {
 	if err != nil {

@@ -8,11 +8,12 @@ type MockStore struct {
 }
 
 func (s *MockStore) Create(id string) error {
+	s.data = make(map[string]interface{})
 	return s.err
 }
 
 func (s *MockStore) Get(id, key string) (interface{}, error) {
-	if s.id == "" {
+	if s.id == "" || s.data == nil {
 		return nil, ErrInvalidSession
 	}
 
@@ -24,7 +25,7 @@ func (s *MockStore) Get(id, key string) (interface{}, error) {
 }
 
 func (s *MockStore) GetMulti(id string, keys ...string) (values map[string]interface{}, err error) {
-	if s.id == "" {
+	if s.id == "" || s.data == nil {
 		return nil, ErrInvalidSession
 	}
 
@@ -41,7 +42,7 @@ func (s *MockStore) GetMulti(id string, keys ...string) (values map[string]inter
 }
 
 func (s *MockStore) GetAll(id string) (values map[string]interface{}, err error) {
-	if s.id == "" {
+	if s.id == "" || s.data == nil {
 		return nil, ErrInvalidSession
 	}
 
@@ -49,7 +50,7 @@ func (s *MockStore) GetAll(id string) (values map[string]interface{}, err error)
 }
 
 func (s *MockStore) Set(cv, key string, value interface{}) error {
-	if s.id == "" {
+	if s.id == "" || s.data == nil {
 		return ErrInvalidSession
 	}
 
@@ -58,7 +59,7 @@ func (s *MockStore) Set(cv, key string, value interface{}) error {
 }
 
 func (s *MockStore) SetMulti(id string, data map[string]interface{}) error {
-	if s.id == "" {
+	if s.id == "" || s.data == nil {
 		return ErrInvalidSession
 	}
 
@@ -69,7 +70,7 @@ func (s *MockStore) SetMulti(id string, data map[string]interface{}) error {
 }
 
 func (s *MockStore) Delete(id string, key ...string) error {
-	if s.id == "" {
+	if s.id == "" || s.data == nil {
 		return ErrInvalidSession
 	}
 
@@ -80,11 +81,20 @@ func (s *MockStore) Delete(id string, key ...string) error {
 }
 
 func (s *MockStore) Clear(id string) error {
-	if s.id == "" {
+	if s.id == "" || s.data == nil {
 		return ErrInvalidSession
 	}
 
-	s.data = map[string]interface{}{}
+	s.data = make(map[string]interface{})
+	return s.err
+}
+
+func (s *MockStore) Destroy(id string) error {
+	if s.id == "" || s.data == nil {
+		return ErrInvalidSession
+	}
+
+	s.data = nil
 	return s.err
 }
 

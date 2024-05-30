@@ -25,8 +25,11 @@ type Store interface {
 	// Delete a given list of keys from session.
 	Delete(id string, key ...string) error
 
-	// Clear clears the entire session.
+	// Clear empties the session.
 	Clear(id string) error
+
+	// Destroy deletes the entire session.
+	Destroy(id string) error
 
 	// Helper method for typecasting/asserting.
 	Int(interface{}, error) (int, error)

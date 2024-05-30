@@ -255,6 +255,12 @@ func TestAll(t *testing.T) {
 	v, err = st.Get(id, "str")
 	assert.Nil(t, v)
 	assert.Nil(t, err)
+
+	// Destroy.
+	assert.ErrorIs(t, st.Destroy("unknow_id"), ErrInvalidSession)
+	assert.NoError(t, st.Destroy(id))
+	_, err = st.Get(id, "str")
+	assert.ErrorIs(t, err, ErrInvalidSession)
 }
 
 func TestPrune(t *testing.T) {

@@ -40,12 +40,13 @@ func (e *Err) Code() int {
 }
 
 type queries struct {
-	create *sql.Stmt
-	get    *sql.Stmt
-	update *sql.Stmt
-	delete *sql.Stmt
-	clear  *sql.Stmt
-	prune  *sql.Stmt
+	create  *sql.Stmt
+	get     *sql.Stmt
+	update  *sql.Stmt
+	delete  *sql.Stmt
+	clear   *sql.Stmt
+	prune   *sql.Stmt
+	destroy *sql.Stmt
 }
 
 // Store represents redis session store for simple sessions.
@@ -241,6 +242,26 @@ func (s *Store) Clear(id string) error {
 	return nil
 }
 
+// Destroy deletes the entire session from backend.
+func (s *Store) Destroy(id string) error {
+	res, err := s.q.destroy.Exec(id)
+	if err != nil {
+		return err
+	}
+
+	num, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	// No row was updated. The session didn't exist.
+	if num == 0 {
+		return ErrInvalidSession
+	}
+
+	return nil
+}
+
 // Int is a helper method to type assert as integer.
 func (s *Store) Int(r interface{}, err error) (int, error) {
 	if err != nil {
@@ -378,6 +399,11 @@ func (s *Store) prepareQueries() (*queries, error) {
 	}
 
 	q.prune, err = s.db.Prepare(fmt.Sprintf("DELETE FROM %s WHERE created_at <= NOW() - INTERVAL '1 second' * $1", s.opt.Table))
+	if err != nil {
+		return nil, err
+	}
+
+	q.destroy, err = s.db.Prepare(fmt.Sprintf("DELETE FROM %s WHERE id=$1", s.opt.Table))
 	if err != nil {
 		return nil, err
 	}

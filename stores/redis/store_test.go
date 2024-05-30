@@ -287,6 +287,29 @@ func TestClear(t *testing.T) {
 	assert.False(t, val)
 }
 
+func TestDestroy(t *testing.T) {
+	// Test should only set in internal map and not in redis
+	var (
+		client = getRedisClient()
+		str    = New(context.TODO(), client)
+
+		// this key is unique across all tests
+		key    = "testid_clear"
+		field1 = "somekey"
+		value1 = 100
+	)
+
+	err := client.HMSet(context.TODO(), str.prefix+key, defaultSessKey, "1", field1, value1).Err()
+	assert.NoError(t, err)
+
+	err = str.Destroy(key)
+	assert.NoError(t, err)
+
+	val, err := client.Exists(context.TODO(), str.prefix+key).Result()
+	assert.NoError(t, err)
+	assert.Equal(t, val, int64(0))
+}
+
 func TestInt(t *testing.T) {
 	str := New(context.TODO(), nil)
 

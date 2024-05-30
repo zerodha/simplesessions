@@ -162,7 +162,7 @@ func (s *Store) Delete(id string, key string) error {
 	return nil
 }
 
-// Clear clears session in redis.
+// Clear empties the session.
 func (s *Store) Clear(id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -172,6 +172,20 @@ func (s *Store) Clear(id string) error {
 		return ErrInvalidSession
 	}
 	s.sessions[id] = make(map[string]interface{})
+
+	return nil
+}
+
+// Destroy deletes the entire session.
+func (s *Store) Destroy(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	_, ok := s.sessions[id]
+	if !ok {
+		return ErrInvalidSession
+	}
+	delete(s.sessions, id)
 
 	return nil
 }

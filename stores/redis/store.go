@@ -200,6 +200,11 @@ func (s *Store) Clear(id string) error {
 	return err
 }
 
+// Destroy deletes the entire session from backend.
+func (s *Store) Destroy(id string) error {
+	return s.client.Del(s.clientCtx, s.prefix+id).Err()
+}
+
 // Int converts interface to integer.
 func (s *Store) Int(r interface{}, err error) (int, error) {
 	if err != nil {

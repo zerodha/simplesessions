@@ -267,14 +267,14 @@ func TestResetCache(t *testing.T) {
 
 func TestGetStore(t *testing.T) {
 	str := newMockStore()
+	mgr := newMockManager(str)
+	sess, err := mgr.NewSession(nil, nil)
+	assert.NoError(t, err)
 	str.data = map[string]interface{}{
 		"key1": 1,
 		"key2": 2,
 		"key3": 3,
 	}
-	mgr := newMockManager(str)
-	sess, err := mgr.NewSession(nil, nil)
-	assert.NoError(t, err)
 
 	// GetAll.
 	v1, err := sess.GetAll()
@@ -417,14 +417,14 @@ func TestSetMulti(t *testing.T) {
 
 func TestDelete(t *testing.T) {
 	str := newMockStore()
+	mgr := newMockManager(str)
+	sess, err := mgr.NewSession(nil, nil)
+	assert.NoError(t, err)
 	str.data = map[string]interface{}{
 		"key1": 1,
 		"key2": 2,
 		"key3": 3,
 	}
-	mgr := newMockManager(str)
-	sess, err := mgr.NewSession(nil, nil)
-	assert.NoError(t, err)
 
 	assert.Contains(t, str.data, "key1")
 	err = sess.Delete("key1")
@@ -455,14 +455,6 @@ func TestClear(t *testing.T) {
 	err = sess.Clear()
 	assert.ErrorIs(t, str.err, err)
 
-	// Test cookie write error.
-	str.err = nil
-	ckErr := errors.New("cookie error")
-	mgr.SetCookieHooks(nil, func(*http.Cookie, interface{}) error { return ckErr })
-
-	err = sess.Clear()
-	assert.ErrorIs(t, ckErr, err)
-
 	// Test clear.
 	str = newMockStore()
 	str.data = map[string]interface{}{
@@ -493,6 +485,57 @@ func TestClear(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 0, len(str.data))
 	assert.Nil(t, sess.cache)
+}
+
+func TestDestroy(t *testing.T) {
+	// Test errors.
+	str := newMockStore()
+	mgr := newMockManager(str)
+	sess, err := mgr.NewSession(nil, nil)
+	assert.NoError(t, err)
+	str.err = errors.New("store error")
+	err = sess.Destroy()
+	assert.ErrorIs(t, str.err, err)
+
+	// Test cookie write error.
+	str.err = nil
+	ckErr := errors.New("cookie error")
+	mgr.SetCookieHooks(nil, func(*http.Cookie, interface{}) error { return ckErr })
+
+	str.data = map[string]interface{}{"foo": "bar"}
+	err = sess.Destroy()
+	assert.ErrorIs(t, ckErr, err)
+
+	// Test clear.
+	str = newMockStore()
+	mgr = newMockManager(str)
+	sess, err = mgr.NewSession(nil, nil)
+	str.data = map[string]interface{}{
+		"key1": 1,
+		"key2": 2,
+	}
+	assert.NoError(t, err)
+	err = sess.Destroy()
+	assert.NoError(t, err)
+	assert.Nil(t, str.data)
+	assert.Nil(t, sess.cache)
+
+	// Test clear.
+	str = newMockStore()
+	mgr = newMockManager(str)
+	sess, err = mgr.NewSession(nil, nil)
+	str.data = map[string]interface{}{
+		"key1": 1,
+		"key2": 2,
+	}
+	assert.NoError(t, err)
+	err = sess.CacheAll()
+	assert.NoError(t, err)
+	assert.NotNil(t, sess.cache)
+	err = sess.Clear()
+	assert.NoError(t, err)
+	assert.Equal(t, 0, len(str.data))
+	assert.Nil(t, sess.cache)
 
 	// Test deleteCookie callback.
 	var (
@@ -504,9 +547,10 @@ func TestClear(t *testing.T) {
 		isCb = true
 		return nil
 	})
-	err = sess.Clear()
+	err = sess.Destroy()
 	assert.NoError(t, err)
 	assert.Equal(t, 0, len(str.data))
 	assert.True(t, isCb)
+	assert.NotNil(t, receCk)
 	assert.Greater(t, time.Now(), receCk.Expires)
 }

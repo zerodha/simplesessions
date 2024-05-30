@@ -205,6 +205,13 @@ func TestClear(t *testing.T) {
 	assert.Equal(t, len(str.tempSetMap["xxx"]), 0)
 }
 
+func TestDestroy(t *testing.T) {
+	str := New(secretKey, blockKey)
+	err := str.Destroy("xxx")
+	assert.Nil(t, err)
+	assert.Equal(t, len(str.tempSetMap["xxx"]), 0)
+}
+
 func TestFlush(t *testing.T) {
 	str := New(secretKey, blockKey)
 	m := map[string]interface{}{

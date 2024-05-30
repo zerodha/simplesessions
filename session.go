@@ -250,14 +250,24 @@ func (s *Session) Delete(key ...string) error {
 	return errAs(err)
 }
 
-// Clear clears session data from store and clears the cookie.
+// Clear empties the data for the given session id.
+// Use `Destroy()` to delete entire session from store and clear the cookie.
 func (s *Session) Clear() error {
 	err := s.manager.store.Clear(s.id)
 	if err != nil {
 		return errAs(err)
-	} else {
-		s.ResetCache()
 	}
+	s.ResetCache()
+	return nil
+}
+
+// Clear deletes the entire session from store and clears the cookie.
+func (s *Session) Destroy() error {
+	err := s.manager.store.Destroy(s.id)
+	if err != nil {
+		return errAs(err)
+	}
+	s.ResetCache()
 	return s.clearCookie()
 }
 
