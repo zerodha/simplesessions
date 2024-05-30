@@ -171,7 +171,7 @@ func (s *Store) Clear(id string) error {
 	if !ok {
 		return ErrInvalidSession
 	}
-	delete(s.sessions, id)
+	s.sessions[id] = make(map[string]interface{})
 
 	return nil
 }

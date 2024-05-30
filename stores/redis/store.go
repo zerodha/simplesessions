@@ -190,7 +190,14 @@ func (s *Store) Delete(id string, key string) error {
 
 // Clear clears session in redis.
 func (s *Store) Clear(id string) error {
-	return s.client.Del(s.clientCtx, s.prefix+id).Err()
+	p := s.client.TxPipeline()
+	p.Del(s.clientCtx, s.prefix+id).Err()
+	p.HSet(s.clientCtx, s.prefix+id, defaultSessKey, "1")
+	if s.ttl > 0 {
+		p.Expire(s.clientCtx, s.prefix+id, s.ttl)
+	}
+	_, err := p.Exec(s.clientCtx)
+	return err
 }
 
 // Int converts interface to integer.

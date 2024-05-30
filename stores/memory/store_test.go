@@ -197,7 +197,8 @@ func TestClear(t *testing.T) {
 
 	err = str.Clear(id)
 	assert.NoError(t, err)
-	assert.NotContains(t, str.sessions, id)
+	assert.Contains(t, str.sessions, id)
+	assert.Equal(t, len(str.sessions[id]), 0)
 }
 
 func TestInt(t *testing.T) {

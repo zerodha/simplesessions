@@ -275,17 +275,16 @@ func TestClear(t *testing.T) {
 	err := client.HMSet(context.TODO(), str.prefix+key, defaultSessKey, "1", field1, value1, field2, value2).Err()
 	assert.NoError(t, err)
 
-	// Check if its set
-	val, err := client.Exists(context.TODO(), str.prefix+key).Result()
-	assert.NoError(t, err)
-	assert.NotEqual(t, val, int64(0))
-
 	err = str.Clear(key)
 	assert.NoError(t, err)
 
-	val, err = client.Exists(context.TODO(), str.prefix+key).Result()
+	val, err := client.HExists(context.TODO(), str.prefix+key, defaultSessKey).Result()
 	assert.NoError(t, err)
-	assert.Equal(t, val, int64(0))
+	assert.True(t, val)
+
+	val, err = client.HExists(context.TODO(), str.prefix+key, field1).Result()
+	assert.NoError(t, err)
+	assert.False(t, val)
 }
 
 func TestInt(t *testing.T) {
