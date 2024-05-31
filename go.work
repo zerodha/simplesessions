@@ -2,7 +2,6 @@ go 1.14
 
 use (
 	.
-	./conv
 	./stores/memory
 	./stores/redis
 	./stores/securecookie

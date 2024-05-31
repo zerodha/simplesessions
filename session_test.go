@@ -218,7 +218,7 @@ func TestClearCookie(t *testing.T) {
 	sess, err := mgr.NewSession(nil, nil)
 	assert.NoError(t, err)
 
-	err = sess.clearCookie()
+	err = sess.ClearCookie()
 	assert.NoError(t, err)
 
 	assert.True(t, isCb)

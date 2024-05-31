@@ -7,10 +7,11 @@ import (
 	"time"
 )
 
-// Session provides the object to get, set, or clear session data.
+// Session represents a session object used for retrieving/setting session data and cookies.
 type Session struct {
 	// Map to store session data, loaded using `CacheAll` method.
-	// All `Get` methods checks here before fetching from the store.
+	// All `Get` methods tries to retrive cached value before fetching from the store.
+	// If its nil then cache is not set and `Get` methods directly fetch from the store.
 	cache    map[string]interface{}
 	cacheMux sync.RWMutex
 
@@ -20,8 +21,7 @@ type Session struct {
 	// Session ID.
 	id string
 
-	// HTTP reader and writer interfaces which are passed on to
-	// `GetCookie`` and `SetCookie`` callbacks.
+	// HTTP reader and writer interfaces which are passed on to `GetCookie`` and `SetCookie`` callbacks.
 	reader interface{}
 	writer interface{}
 }
@@ -45,8 +45,8 @@ type errCode interface {
 	Code() int
 }
 
-// WriteCookie creates a cookie with the given session ID and parameters,
-// then calls the `SetCookie` callback. This can be used to update the cookie externally.
+// WriteCookie writes the cookie for the given session ID.
+// Uses all the cookie options set in Manager.
 func (s *Session) WriteCookie(id string) error {
 	ck := &http.Cookie{
 		Value:    id,
@@ -64,8 +64,8 @@ func (s *Session) WriteCookie(id string) error {
 	return s.manager.setCookieHook(ck, s.writer)
 }
 
-// clearCookie sets the cookie's expiry to one day prior to clear it.
-func (s *Session) clearCookie() error {
+// ClearCookie sets the cookie's expiry to one day prior to clear it.
+func (s *Session) ClearCookie() error {
 	ck := &http.Cookie{
 		Name:  s.manager.opts.Cookie.Name,
 		Value: "",
@@ -100,7 +100,7 @@ func (s *Session) getCacheAll() map[string]interface{} {
 }
 
 // getCacheAll returns a map of values for the given list of keys.
-// If key doesn't exist then ErrFieldNotFound is returned.
+// If key doesn't exist then Nil is returned.
 func (s *Session) getCache(key ...string) map[string]interface{} {
 	s.cacheMux.RLock()
 	defer s.cacheMux.RUnlock()
@@ -241,7 +241,7 @@ func (s *Session) SetMulti(data map[string]interface{}) error {
 	return errAs(err)
 }
 
-// Delete deletes a field from session.
+// Delete deletes a given list of fields from the session.
 func (s *Session) Delete(key ...string) error {
 	err := s.manager.store.Delete(s.id, key...)
 	if err == nil {
@@ -250,8 +250,8 @@ func (s *Session) Delete(key ...string) error {
 	return errAs(err)
 }
 
-// Clear empties the data for the given session id.
-// Use `Destroy()` to delete entire session from store and clear the cookie.
+// Clear empties the data for the given session id but doesn't clear the cookie.
+// Use `Destroy()` to delete entire session from the store and clear the cookie.
 func (s *Session) Clear() error {
 	err := s.manager.store.Clear(s.id)
 	if err != nil {
@@ -261,53 +261,60 @@ func (s *Session) Clear() error {
 	return nil
 }
 
-// Clear deletes the entire session from store and clears the cookie.
+// Destroy deletes the session from backend and clears the cookie.
 func (s *Session) Destroy() error {
 	err := s.manager.store.Destroy(s.id)
 	if err != nil {
 		return errAs(err)
 	}
 	s.ResetCache()
-	return s.clearCookie()
+	return s.ClearCookie()
 }
 
 // Int is a helper to get values as integer.
+// If the value is Nil, ErrNil is returned, which means key doesn't exist.
 func (s *Session) Int(r interface{}, err error) (int, error) {
 	out, err := s.manager.store.Int(r, err)
 	return out, errAs(err)
 }
 
 // Int64 is a helper to get values as Int64.
+// If the value is Nil, ErrNil is returned, which means key doesn't exist.
 func (s *Session) Int64(r interface{}, err error) (int64, error) {
 	out, err := s.manager.store.Int64(r, err)
 	return out, errAs(err)
 }
 
 // UInt64 is a helper to get values as UInt64.
+// If the value is Nil, ErrNil is returned, which means key doesn't exist.
 func (s *Session) UInt64(r interface{}, err error) (uint64, error) {
 	out, err := s.manager.store.UInt64(r, err)
 	return out, errAs(err)
 }
 
 // Float64 is a helper to get values as Float64.
+// If the value is Nil, ErrNil is returned, which means key doesn't exist.
 func (s *Session) Float64(r interface{}, err error) (float64, error) {
 	out, err := s.manager.store.Float64(r, err)
 	return out, errAs(err)
 }
 
 // String is a helper to get values as String.
+// If the value is Nil, ErrNil is returned, which means key doesn't exist.
 func (s *Session) String(r interface{}, err error) (string, error) {
 	out, err := s.manager.store.String(r, err)
 	return out, errAs(err)
 }
 
 // Bytes is a helper to get values as Bytes.
+// If the value is Nil, ErrNil is returned, which means key doesn't exist.
 func (s *Session) Bytes(r interface{}, err error) ([]byte, error) {
 	out, err := s.manager.store.Bytes(r, err)
 	return out, errAs(err)
 }
 
 // Bool is a helper to get values as Bool.
+// If the value is Nil, ErrNil is returned, which means key doesn't exist.
 func (s *Session) Bool(r interface{}, err error) (bool, error) {
 	out, err := s.manager.store.Bool(r, err)
 	return out, errAs(err)

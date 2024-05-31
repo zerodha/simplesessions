@@ -9,6 +9,7 @@ import (
 	"unicode"
 )
 
+// Context name type.
 type ctxNameType string
 
 const (
@@ -46,7 +47,7 @@ type Manager struct {
 	validateID func(string) bool
 }
 
-// Options are available options to configure Manager.
+// Options to configure manager and cookie.
 type Options struct {
 	// If enabled, Acquire() will always create and return a new session if one doesn't already exist.
 	// If disabled then new session can only be created using NewSession() method.
@@ -187,8 +188,10 @@ func (m *Manager) NewSession(r, w interface{}) (*Session, error) {
 }
 
 // Acquire retrieves a `Session` from the store using the current session cookie.
-// If not found and `opt.EnableAutoCreate` is true, a new session is created and stored.
-// If not found and `opt.EnableAutoCreate` is false which is the default, it returns ErrInvalidSession.
+//
+// If session not found and `opt.EnableAutoCreate` is true, a new session is created and returned.
+// If session not found and `opt.EnableAutoCreate` is false which is the default, it returns `ErrInvalidSession`.
+//
 // `r` and `w` are request and response interfaces which is passed back in in GetCookie and SetCookie callbacks.
 // Optionally, a context can be passed to get an already loaded session, useful in middleware chains.
 func (m *Manager) Acquire(c context.Context, r, w interface{}) (*Session, error) {
