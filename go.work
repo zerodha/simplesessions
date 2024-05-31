@@ -6,4 +6,5 @@ use (
 	./stores/postgres
 	./stores/redis
 	./stores/securecookie
+	./examples
 )

@@ -137,7 +137,7 @@ func main() {
 
 	// 5s read/write timeout
 	server := initServer("go-redis", 5)
-	if err := g.ListenAndServe(":3000", "", server); err != nil {
+	if err := g.ListenAndServe(":1111", "", server); err != nil {
 		log.Fatal(err)
 	}
 }
