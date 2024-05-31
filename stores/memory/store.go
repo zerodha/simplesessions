@@ -149,7 +149,7 @@ func (s *Store) SetMulti(id string, data map[string]interface{}) error {
 }
 
 // Delete deletes a key from session.
-func (s *Store) Delete(id string, key string) error {
+func (s *Store) Delete(id string, keys ...string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -157,7 +157,10 @@ func (s *Store) Delete(id string, key string) error {
 	if !ok {
 		return ErrInvalidSession
 	}
-	delete(s.sessions[id], key)
+
+	for _, k := range keys {
+		delete(s.sessions[id], k)
+	}
 
 	return nil
 }

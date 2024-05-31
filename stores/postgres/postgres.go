@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/lib/pq"
 	_ "github.com/lib/pq"
 )
 
@@ -203,8 +204,8 @@ func (s *Store) SetMulti(id string, data map[string]interface{}) (err error) {
 }
 
 // Delete deletes a key from redis session hashmap.
-func (s *Store) Delete(id string, key string) error {
-	res, err := s.q.delete.Exec(id, key)
+func (s *Store) Delete(id string, keys ...string) error {
+	res, err := s.q.delete.Exec(id, pq.Array(keys))
 	if err != nil {
 		return err
 	}
@@ -388,7 +389,7 @@ func (s *Store) prepareQueries() (*queries, error) {
 		return nil, err
 	}
 
-	q.delete, err = s.db.Prepare(fmt.Sprintf("UPDATE %s SET data = data - $2 WHERE id=$1", s.opt.Table))
+	q.delete, err = s.db.Prepare(fmt.Sprintf("UPDATE %s SET data = data #- $2 WHERE id=$1", s.opt.Table))
 	if err != nil {
 		return nil, err
 	}

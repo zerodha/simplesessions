@@ -202,15 +202,17 @@ func (s *Store) Flush(cv string) (string, error) {
 // Delete deletes a field from session. Once called, Flush() should be
 // called to retrieve the updated, unflushed values and written to the cookie
 // externally.
-func (s *Store) Delete(cv, key string) error {
+func (s *Store) Delete(cv string, keys ...string) error {
 	// Decode current cookie
 	vals, err := s.decode(cv)
 	if err != nil {
 		return ErrInvalidSession
 	}
 
-	// Delete given key in current values.
-	delete(vals, key)
+	for _, k := range keys {
+		// Delete given key in current values.
+		delete(vals, k)
+	}
 
 	// Create session map if doesn't exist.
 	s.mu.Lock()

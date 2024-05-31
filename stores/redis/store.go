@@ -184,8 +184,8 @@ func (s *Store) SetMulti(id string, data map[string]interface{}) error {
 }
 
 // Delete deletes a key from redis session hashmap.
-func (s *Store) Delete(id string, key string) error {
-	return s.client.HDel(s.clientCtx, s.prefix+id, key).Err()
+func (s *Store) Delete(id string, keys ...string) error {
+	return s.client.HDel(s.clientCtx, s.prefix+id, keys...).Err()
 }
 
 // Clear clears session in redis.
