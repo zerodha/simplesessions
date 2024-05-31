@@ -1,4 +1,4 @@
-module github.com/vividvilla/simplesessions/stores/securecookie/v2
+module github.com/vividvilla/simplesessions/stores/securecookie/v3
 
 go 1.14
 
