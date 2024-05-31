@@ -1,25 +1,32 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"time"
 
-	"github.com/gomodule/redigo/redis"
+	"github.com/redis/go-redis/v9"
 	"github.com/valyala/fasthttp"
-	redisstore "github.com/vividvilla/simplesessions/stores/redis/v2"
+	redisstore "github.com/vividvilla/simplesessions/stores/redis/v3"
 	"github.com/vividvilla/simplesessions/v3"
 )
 
 var (
-	sessionManager *simplesessions.Manager
+	sessMgr *simplesessions.Manager
 
 	testKey   = "abc123"
 	testValue = 123456
 )
 
 func setHandler(ctx *fasthttp.RequestCtx) {
-	sess, err := sessionManager.Acquire(ctx, ctx, nil)
+	sess, err := sessMgr.Acquire(nil, ctx, ctx)
+	// Create new session if it doesn't exist.
+	if err == simplesessions.ErrInvalidSession {
+		sess, err = sessMgr.NewSession(ctx, ctx)
+	}
+
 	if err != nil {
 		ctx.Error(err.Error(), 500)
 		return
@@ -31,16 +38,11 @@ func setHandler(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	if err = sess.Commit(); err != nil {
-		ctx.Error(err.Error(), 500)
-		return
-	}
-
 	fmt.Fprintf(ctx, "success")
 }
 
 func getHandler(ctx *fasthttp.RequestCtx) {
-	sess, err := sessionManager.Acquire(ctx, ctx, nil)
+	sess, err := sessMgr.Acquire(ctx, ctx, nil)
 	if err != nil {
 		ctx.Error(err.Error(), 500)
 		return
@@ -100,34 +102,33 @@ func setCookie(cookie *http.Cookie, w interface{}) error {
 	return nil
 }
 
-func getRedisPool(address string, password string, maxActive int, maxIdle int, timeout time.Duration) *redis.Pool {
-	return &redis.Pool{
-		Wait:      true,
-		MaxActive: maxActive,
-		MaxIdle:   maxIdle,
-		Dial: func() (redis.Conn, error) {
-			c, err := redis.Dial(
-				"tcp",
-				address,
-				redis.DialPassword(password),
-				redis.DialConnectTimeout(timeout),
-				redis.DialReadTimeout(timeout),
-				redis.DialWriteTimeout(timeout),
-			)
-
-			return c, err
-		},
+func getRedisPool() redis.UniversalClient {
+	o := &redis.Options{
+		Addr:        "localhost:6379",
+		Username:    "",
+		Password:    "",
+		DialTimeout: time.Second * 3,
+		DB:          0,
 	}
+
+	var (
+		ctx = context.TODO()
+		cl  = redis.NewClient(o)
+	)
+	if err := cl.Ping(ctx).Err(); err != nil {
+		log.Fatalf("error initializing redis: %v", err)
+	}
+
+	return cl
 }
 
 func main() {
-	rPool := getRedisPool("localhost:6379", "", 10, 10, 1000*time.Millisecond)
+	rPool := getRedisPool()
 
-	sessionManager = simplesessions.New(simplesessions.Options{})
-	store := redisstore.New(rPool)
-	sessionManager.UseStore(store)
-	sessionManager.RegisterGetCookie(getCookie)
-	sessionManager.RegisterSetCookie(setCookie)
+	sessMgr = simplesessions.New(simplesessions.Options{})
+	store := redisstore.New(context.TODO(), rPool)
+	sessMgr.UseStore(store)
+	sessMgr.SetCookieHooks(getCookie, setCookie)
 
 	m := func(ctx *fasthttp.RequestCtx) {
 		switch string(ctx.Path()) {

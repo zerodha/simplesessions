@@ -8,7 +8,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 	"github.com/valyala/fasthttp"
-	redisstore "github.com/vividvilla/simplesessions/stores/goredis/v9"
+	redisstore "github.com/vividvilla/simplesessions/stores/redis/v3"
 	"github.com/vividvilla/simplesessions/v3"
 	"github.com/zerodha/fastglue"
 )
@@ -18,9 +18,9 @@ const (
 )
 
 var (
-	sessionManager *simplesessions.Manager
-	testKey        = "question"
-	testValue      = 42
+	sessMgr   *simplesessions.Manager
+	testKey   = "question"
+	testValue = 42
 )
 
 func initRedisGo(address, password string) *redis.Client {
@@ -43,8 +43,11 @@ func initServer(name string, timeout int) *fasthttp.Server {
 }
 
 func setHandler(r *fastglue.Request) error {
-
-	sess, err := sessionManager.Acquire(r.RequestCtx, r.RequestCtx, nil)
+	sess, err := sessMgr.Acquire(nil, r.RequestCtx, r.RequestCtx)
+	// Create new session if it doesn't exist.
+	if err == simplesessions.ErrInvalidSession {
+		sess, err = sessMgr.NewSession(r.RequestCtx, r.RequestCtx)
+	}
 	if err != nil {
 		return r.SendErrorEnvelope(fasthttp.StatusInternalServerError, err.Error(), nil, GeneralError)
 	}
@@ -54,15 +57,11 @@ func setHandler(r *fastglue.Request) error {
 		return r.SendErrorEnvelope(fasthttp.StatusInternalServerError, err.Error(), nil, GeneralError)
 	}
 
-	if err = sess.Commit(); err != nil {
-		return r.SendErrorEnvelope(fasthttp.StatusInternalServerError, err.Error(), nil, GeneralError)
-	}
-
 	return r.SendEnvelope("success")
 }
 
 func getHandler(r *fastglue.Request) error {
-	sess, err := sessionManager.Acquire(r.RequestCtx, r.RequestCtx, nil)
+	sess, err := sessMgr.Acquire(nil, r.RequestCtx, r.RequestCtx)
 	if err != nil {
 		return r.SendErrorEnvelope(fasthttp.StatusInternalServerError, err.Error(), nil, GeneralError)
 	}
@@ -128,10 +127,9 @@ func main() {
 	ctx := context.Background()
 	store := redisstore.New(ctx, rc)
 
-	sessionManager = simplesessions.New(simplesessions.Options{})
-	sessionManager.UseStore(store)
-	sessionManager.RegisterGetCookie(getCookie)
-	sessionManager.RegisterSetCookie(setCookie)
+	sessMgr = simplesessions.New(simplesessions.Options{})
+	sessMgr.UseStore(store)
+	sessMgr.SetCookieHooks(getCookie, setCookie)
 
 	g := fastglue.New()
 	g.GET("/get", getHandler)

@@ -5,12 +5,12 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/vividvilla/simplesessions/stores/securecookie/v2"
+	"github.com/vividvilla/simplesessions/stores/securecookie/v3"
 	"github.com/vividvilla/simplesessions/v3"
 )
 
 var (
-	sessionManager *simplesessions.Manager
+	sessMgr *simplesessions.Manager
 
 	store = securecookie.New(
 		[]byte("0dIHy6S2uBuKaNnTUszB218L898ikGYA"),
@@ -22,7 +22,21 @@ var (
 )
 
 func setHandler(w http.ResponseWriter, r *http.Request) {
-	sess, err := sessionManager.Acquire(r, w, nil)
+	sess, err := sessMgr.Acquire(nil, r, w)
+	// Create new session if it doesn't exist.
+	if err == simplesessions.ErrInvalidSession {
+		sess, err = sessMgr.NewSession(r, w)
+
+		// IMPORTANT: any Set/SetMulti/Delete/Clear/Destroy and NewSession()
+		// should flush the values using `store.Flush()` otherwise cookie won't be updated.
+		if err == nil {
+			ck, err := store.Flush(sess.ID())
+			if err == nil {
+				err = sess.WriteCookie(ck)
+			}
+		}
+	}
+
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return
@@ -52,7 +66,7 @@ func setHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func getHandler(w http.ResponseWriter, r *http.Request) {
-	sess, err := sessionManager.Acquire(r, w, nil)
+	sess, err := sessMgr.Acquire(nil, r, w)
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return
@@ -84,11 +98,9 @@ func setCookie(cookie *http.Cookie, w interface{}) error {
 }
 
 func main() {
-	sessionManager = simplesessions.New(simplesessions.Options{})
-	sessionManager.UseStore(store)
-
-	sessionManager.RegisterGetCookie(getCookie)
-	sessionManager.RegisterSetCookie(setCookie)
+	sessMgr = simplesessions.New(simplesessions.Options{})
+	sessMgr.UseStore(store)
+	sessMgr.SetCookieHooks(getCookie, setCookie)
 
 	http.HandleFunc("/set", setHandler)
 	http.HandleFunc("/get", getHandler)
