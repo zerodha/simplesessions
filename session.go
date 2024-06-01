@@ -152,11 +152,11 @@ func (s *Session) deleteCache(key ...string) {
 	}
 }
 
-// CacheAll loads session values into memory for quick access.
+// Cache loads session values into memory for quick access.
 // Ideal for centralized session fetching, e.g., in middleware.
 // Subsequent Get/GetMulti calls return cached values, avoiding store access.
 // Use ResetCache() to ensure GetAll/Get/GetMulti fetches from the store.
-func (s *Session) CacheAll() error {
+func (s *Session) Cache() error {
 	all, err := s.manager.store.GetAll(s.id)
 	if err != nil {
 		return err

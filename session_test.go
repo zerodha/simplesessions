@@ -239,13 +239,13 @@ func TestCacheAll(t *testing.T) {
 
 	// Test error.
 	str.err = errors.New("store error")
-	err = sess.CacheAll()
+	err = sess.Cache()
 	assert.ErrorIs(t, str.err, err)
 	assert.Nil(t, sess.cache)
 
 	// Test without error.
 	str.err = nil
-	err = sess.CacheAll()
+	err = sess.Cache()
 	assert.NoError(t, err)
 	assert.Equal(t, str.data, sess.cache)
 }
@@ -258,7 +258,7 @@ func TestResetCache(t *testing.T) {
 	}
 	mgr := newMockManager(str)
 	sess, _ := mgr.NewSession(nil, nil)
-	sess.CacheAll()
+	sess.Cache()
 	assert.Equal(t, str.data, sess.cache)
 
 	sess.ResetCache()
@@ -367,7 +367,7 @@ func TestSet(t *testing.T) {
 	assert.Nil(t, sess.cache)
 
 	// Cache and set.
-	err = sess.CacheAll()
+	err = sess.Cache()
 	assert.NoError(t, err)
 	err = sess.Set("key1", 1)
 	assert.NoError(t, err)
@@ -401,7 +401,7 @@ func TestSetMulti(t *testing.T) {
 
 	// Cache and set.
 	str.data = map[string]interface{}{}
-	err = sess.CacheAll()
+	err = sess.Cache()
 	assert.NoError(t, err)
 	err = sess.SetMulti(data)
 	assert.NoError(t, err)
@@ -432,7 +432,7 @@ func TestDelete(t *testing.T) {
 	assert.NotContains(t, str.data, "key1")
 
 	// Cache and set.
-	err = sess.CacheAll()
+	err = sess.Cache()
 	assert.NoError(t, err)
 	err = sess.Delete("key2")
 	assert.NoError(t, err)
@@ -478,7 +478,7 @@ func TestClear(t *testing.T) {
 	mgr = newMockManager(str)
 	sess, err = mgr.NewSession(nil, nil)
 	assert.NoError(t, err)
-	err = sess.CacheAll()
+	err = sess.Cache()
 	assert.NoError(t, err)
 	assert.NotNil(t, sess.cache)
 	err = sess.Clear()
@@ -529,7 +529,7 @@ func TestDestroy(t *testing.T) {
 		"key2": 2,
 	}
 	assert.NoError(t, err)
-	err = sess.CacheAll()
+	err = sess.Cache()
 	assert.NoError(t, err)
 	assert.NotNil(t, sess.cache)
 	err = sess.Clear()
