@@ -1,4 +1,4 @@
-module github.com/vividvilla/simplesessions/stores/redis/v3
+module github.com/zerodha/simplesessions/stores/redis/v3
 
 go 1.18
 

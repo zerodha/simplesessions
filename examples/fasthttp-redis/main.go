@@ -9,8 +9,8 @@ import (
 
 	"github.com/redis/go-redis/v9"
 	"github.com/valyala/fasthttp"
-	redisstore "github.com/vividvilla/simplesessions/stores/redis/v3"
-	"github.com/vividvilla/simplesessions/v3"
+	redisstore "github.com/zerodha/simplesessions/stores/redis/v3"
+	"github.com/zerodha/simplesessions/v3"
 )
 
 var (

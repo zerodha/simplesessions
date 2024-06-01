@@ -1,14 +1,14 @@
-module github.com/vividvilla/simplesessions/examples
+module github.com/zerodha/simplesessions/examples
 
 go 1.18
 
 require (
 	github.com/redis/go-redis/v9 v9.5.1
 	github.com/valyala/fasthttp v1.44.0
-	github.com/vividvilla/simplesessions/stores/memory/v3 v3.0.0
-	github.com/vividvilla/simplesessions/stores/redis/v3 v3.0.0
-	github.com/vividvilla/simplesessions/stores/securecookie/v3 v3.0.0
-	github.com/vividvilla/simplesessions/v3 v3.0.0
+	github.com/zerodha/simplesessions/stores/memory/v3 v3.0.0
+	github.com/zerodha/simplesessions/stores/redis/v3 v3.0.0
+	github.com/zerodha/simplesessions/stores/securecookie/v3 v3.0.0
+	github.com/zerodha/simplesessions/v3 v3.0.0
 	github.com/zerodha/fastglue v1.8.0
 )
 
@@ -28,8 +28,8 @@ require (
 )
 
 replace (
-	github.com/vividvilla/simplesessions/stores/memory/v3 => ../stores/memory
-	github.com/vividvilla/simplesessions/stores/redis/v3 => ../stores/redis
-	github.com/vividvilla/simplesessions/stores/securecookie/v3 => ../stores/securecookie
-	github.com/vividvilla/simplesessions/v3 => ../
+	github.com/zerodha/simplesessions/stores/memory/v3 => ../stores/memory
+	github.com/zerodha/simplesessions/stores/redis/v3 => ../stores/redis
+	github.com/zerodha/simplesessions/stores/securecookie/v3 => ../stores/securecookie
+	github.com/zerodha/simplesessions/v3 => ../
 )

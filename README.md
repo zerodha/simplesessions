@@ -16,11 +16,11 @@ Most session libraries are highly opinionated and hard-wired to work with `net/h
 Install `simplesessions` and all [available stores](/stores).
 
 ```shell
-go get -u github.com/vividvilla/simplesessions/v3
+go get -u github.com/zerodha/simplesessions/v3
 
 # Install the requrired store: memory|redis|postgres|securecookie
-go get -u github.com/vividvilla/simplesessions/v3/stores/redis
-go get -u github.com/vividvilla/simplesessions/v3/stores/postgres
+go get -u github.com/zerodha/simplesessions/v3/stores/redis
+go get -u github.com/zerodha/simplesessions/v3/stores/postgres
 ```
 
 # Stores

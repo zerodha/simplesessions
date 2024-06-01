@@ -14,14 +14,14 @@ jobs:
     name: Go ${{ matrix.go }} Tests
     steps:
       - uses: actions/checkout@v3
- 
+
       - name: Setup Go
         uses: actions/setup-go@v3
         with:
           go-version: ${{ matrix.go }}
 
       - name: Run all tests
-        run: go test -v github.com/vividvilla/simplesessions...
+        run: go test -v github.com/zerodha/simplesessions...
 
       - name: Run Coverage
         run: go test -v -cover ./...
