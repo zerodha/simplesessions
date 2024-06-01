@@ -2,58 +2,99 @@ package simplesessions
 
 // MockStore mocks the store for testing
 type MockStore struct {
-	isValid     bool
-	cookieValue string
-	err         error
-	val         interface{}
-	isCommited  bool
+	err  error
+	id   string
+	data map[string]interface{}
 }
 
-func (s *MockStore) reset() {
-	s.isValid = false
-	s.cookieValue = ""
-	s.err = nil
-	s.val = nil
-	s.isCommited = false
+func (s *MockStore) Create(id string) error {
+	s.data = make(map[string]interface{})
+	return s.err
 }
 
-func (s *MockStore) Create() (cv string, err error) {
-	return s.val.(string), s.err
+func (s *MockStore) Get(id, key string) (interface{}, error) {
+	if s.id == "" || s.data == nil {
+		return nil, ErrInvalidSession
+	}
+
+	d, ok := s.data[key]
+	if !ok {
+		return nil, nil
+	}
+	return d, s.err
 }
 
-func (s *MockStore) Get(cv, key string) (value interface{}, err error) {
-	return s.val, s.err
+func (s *MockStore) GetMulti(id string, keys ...string) (values map[string]interface{}, err error) {
+	if s.id == "" || s.data == nil {
+		return nil, ErrInvalidSession
+	}
+
+	out := make(map[string]interface{})
+	for _, key := range keys {
+		v, ok := s.data[key]
+		if !ok {
+			v = err
+		}
+		out[key] = v
+	}
+
+	return out, s.err
 }
 
-func (s *MockStore) GetMulti(cv string, keys ...string) (values map[string]interface{}, err error) {
-	vals := make(map[string]interface{})
-	vals["val"] = s.val
-	return vals, s.err
-}
+func (s *MockStore) GetAll(id string) (values map[string]interface{}, err error) {
+	if s.id == "" || s.data == nil {
+		return nil, ErrInvalidSession
+	}
 
-func (s *MockStore) GetAll(cv string) (values map[string]interface{}, err error) {
-	vals := make(map[string]interface{})
-	vals["val"] = s.val
-	return vals, s.err
+	return s.data, s.err
 }
 
 func (s *MockStore) Set(cv, key string, value interface{}) error {
-	s.val = value
+	if s.id == "" || s.data == nil {
+		return ErrInvalidSession
+	}
+
+	s.data[key] = value
 	return s.err
 }
 
-func (s *MockStore) Commit(cv string) error {
-	s.isCommited = true
+func (s *MockStore) SetMulti(id string, data map[string]interface{}) error {
+	if s.id == "" || s.data == nil {
+		return ErrInvalidSession
+	}
+
+	for k, v := range data {
+		s.data[k] = v
+	}
 	return s.err
 }
 
-func (s *MockStore) Delete(cv string, key string) error {
-	s.val = nil
+func (s *MockStore) Delete(id string, key ...string) error {
+	if s.id == "" || s.data == nil {
+		return ErrInvalidSession
+	}
+
+	for _, k := range key {
+		delete(s.data, k)
+	}
 	return s.err
 }
 
-func (s *MockStore) Clear(cv string) error {
-	s.val = nil
+func (s *MockStore) Clear(id string) error {
+	if s.id == "" || s.data == nil {
+		return ErrInvalidSession
+	}
+
+	s.data = make(map[string]interface{})
+	return s.err
+}
+
+func (s *MockStore) Destroy(id string) error {
+	if s.id == "" || s.data == nil {
+		return ErrInvalidSession
+	}
+
+	s.data = nil
 	return s.err
 }
 

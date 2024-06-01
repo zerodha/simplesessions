@@ -1,7 +1,7 @@
 package securecookie
 
 import (
-	"errors"
+	"fmt"
 	"sync"
 
 	"github.com/gorilla/securecookie"
@@ -15,9 +15,8 @@ var (
 	// Error codes for store errors. This should match the codes
 	// defined in the /simplesessions package exactly.
 	ErrInvalidSession = &Err{code: 1, msg: "invalid session"}
-	ErrFieldNotFound  = &Err{code: 2, msg: "field not found"}
-	ErrAssertType     = &Err{code: 3, msg: "assertion failed"}
-	ErrNil            = &Err{code: 4, msg: "nil returned"}
+	ErrAssertType     = &Err{code: 2, msg: "assertion failed"}
+	ErrNil            = &Err{code: 3, msg: "nil returned"}
 )
 
 type Err struct {
@@ -76,18 +75,20 @@ func (s *Store) SetCookieName(cookieName string) {
 }
 
 // IsValid checks if the given cookie value is valid.
-func (s *Store) IsValid(cv string) (bool, error) {
+func (s *Store) IsValid(cv string) bool {
 	if _, err := s.decode(cv); err != nil {
-		return false, nil
+		return false
 	}
-
-	return true, nil
+	return true
 }
 
 // Create creates a new secure cookie session with empty map.
-func (s *Store) Create() (string, error) {
-	// Create empty cookie
-	return s.encode(make(map[string]interface{}))
+// Once called, Flush() should be called to retrieve the updated.
+func (s *Store) Create(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.tempSetMap[id] = make(map[string]interface{})
+	return nil
 }
 
 // Get returns a field value from session
@@ -101,7 +102,7 @@ func (s *Store) Get(cv, key string) (interface{}, error) {
 	// Get given field
 	val, ok := vals[key]
 	if !ok {
-		return nil, ErrFieldNotFound
+		return nil, nil
 	}
 
 	return val, nil
@@ -117,9 +118,15 @@ func (s *Store) GetMulti(cv string, keys ...string) (map[string]interface{}, err
 	}
 
 	// Get all given fields
-	res := make(map[string]interface{})
+	var (
+		ok  bool
+		res = make(map[string]interface{})
+	)
 	for _, k := range keys {
-		res[k], _ = vals[k]
+		res[k], ok = vals[k]
+		if !ok {
+			res[k] = nil
+		}
 	}
 
 	return res, nil
@@ -136,6 +143,8 @@ func (s *Store) GetAll(cv string) (map[string]interface{}, error) {
 }
 
 // Set sets a field in session but not saved untill commit is called.
+// Flush() should be called to retrieve the updated, unflushed values
+// and written to the cookie externally.
 func (s *Store) Set(cv, key string, val interface{}) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -151,20 +160,37 @@ func (s *Store) Set(cv, key string, val interface{}) error {
 	return nil
 }
 
-// Commit is unsupported in this store.
-func (s *Store) Commit(cv string) error {
-	return errors.New("Commit() is not supported. Use Flush() to get values and write to cookie externally.")
+// SetMulti sets given map of kv pairs to session. Flush() should be
+// called to retrieve the updated, unflushed values and written to the cookie
+// externally.
+func (s *Store) SetMulti(cv string, vals map[string]interface{}) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Create session map if doesn't exist
+	if _, ok := s.tempSetMap[cv]; !ok {
+		s.tempSetMap[cv] = make(map[string]interface{})
+	}
+
+	for k, v := range vals {
+		s.tempSetMap[cv][k] = v
+	}
+
+	return nil
 }
 
 // Flush flushes the 'set' buffer and returns encoded secure cookie value ready to be saved.
 // This value should be written to the cookie externally.
+// This can be used with simplessions.Session.WriteCookie.
+// val, _ := str.Flush(cookieVal)
+// sess.WriteCookie(val)
 func (s *Store) Flush(cv string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	vals, ok := s.tempSetMap[cv]
 	if !ok {
-		return "", nil
+		return "", fmt.Errorf("nothing to flush")
 	}
 
 	delete(s.tempSetMap, cv)
@@ -176,15 +202,17 @@ func (s *Store) Flush(cv string) (string, error) {
 // Delete deletes a field from session. Once called, Flush() should be
 // called to retrieve the updated, unflushed values and written to the cookie
 // externally.
-func (s *Store) Delete(cv, key string) error {
+func (s *Store) Delete(cv string, keys ...string) error {
 	// Decode current cookie
 	vals, err := s.decode(cv)
 	if err != nil {
 		return ErrInvalidSession
 	}
 
-	// Delete given key in current values.
-	delete(vals, key)
+	for _, k := range keys {
+		// Delete given key in current values.
+		delete(vals, k)
+	}
 
 	// Create session map if doesn't exist.
 	s.mu.Lock()
@@ -202,9 +230,21 @@ func (s *Store) Delete(cv, key string) error {
 	return nil
 }
 
-// Clear clears the session.
+// Clear clears the session. Once called, Flush() should be
+// called to retrieve the updated, unflushed values and written to the cookie
+// externally.
 func (s *Store) Clear(cv string) error {
-	return errors.New("Clear() is not supported. Use Create() to create an empty map and write to cookie externally.")
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.tempSetMap[cv] = make(map[string]interface{})
+	return nil
+}
+
+// Destroy clears the session. Once called, Flush() should be
+// called to retrieve the updated, unflushed values and written to the cookie
+// externally.
+func (s *Store) Destroy(cv string) error {
+	return s.Clear(cv)
 }
 
 // Int is a helper method to type assert as integer

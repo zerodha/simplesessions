@@ -1,11 +1,10 @@
-go 1.14
+go 1.18
 
 use (
 	.
-	./conv
-	./stores/goredis
 	./stores/memory
+	./stores/postgres
 	./stores/redis
 	./stores/securecookie
-	./stores/postgres
+	./examples
 )

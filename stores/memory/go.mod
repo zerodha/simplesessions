@@ -1,4 +1,4 @@
-module github.com/vividvilla/simplesessions/stores/memory/v2
+module github.com/vividvilla/simplesessions/stores/memory/v3
 
 go 1.18
 

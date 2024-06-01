@@ -3,7 +3,9 @@ package postgres
 // For this test to run, set env vars: PG_HOST, PG_PORT, PG_USER, PG_PASSWORD, PG_DB.
 
 import (
+	"crypto/rand"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -17,10 +19,23 @@ import (
 const testTable = "sessions"
 
 var (
-	st        *Store
-	db        *sql.DB
-	randID, _ = generateID(sessionIDLen)
+	st *Store
+	db *sql.DB
 )
+
+func generateID() (string, error) {
+	const dict = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+	bytes := make([]byte, 32)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", err
+	}
+
+	for k, v := range bytes {
+		bytes[k] = dict[v%byte(len(dict))]
+	}
+
+	return string(bytes), nil
+}
 
 func init() {
 	if os.Getenv("PG_HOST") == "" {
@@ -47,35 +62,37 @@ func init() {
 	}
 }
 
-func TestCreate(t *testing.T) {
-	for n := 0; n < 5; n++ {
-		id, err := st.Create()
-		assert.NoError(t, err)
-		assert.NotEmpty(t, id)
-	}
+func TestNew(t *testing.T) {
+	s1, err := New(Opt{}, db)
+	assert.Nil(t, err)
+	assert.Equal(t, s1.opt.Table, "sessions")
+	assert.Equal(t, s1.opt.TTL, time.Hour*24)
+
+	_, err = New(Opt{Table: "unknown"}, db)
+	assert.Error(t, err)
 }
 
-func TestSet(t *testing.T) {
-	assert.NotEmpty(t, randID)
-
-	id, err := st.Create()
+func TestCreate(t *testing.T) {
+	id, _ := generateID()
+	err := st.Create(id)
 	assert.NoError(t, err)
-	assert.NotEmpty(t, id)
+
+	var data []byte
+	err = db.QueryRow(fmt.Sprintf("SELECT data FROM %s WHERE id=$1", testTable), id).Scan(&data)
+	assert.NoError(t, err)
+	assert.Equal(t, []byte("{}"), data)
+}
+
+func TestAll(t *testing.T) {
+	id, _ := generateID()
+
+	err := st.Create(id)
+	assert.NoError(t, err)
 
 	assert.NoError(t, st.Set(id, "num", 123))
 	assert.NoError(t, st.Set(id, "float", 12.3))
 	assert.NoError(t, st.Set(id, "str", "hello 123"))
 	assert.NoError(t, st.Set(id, "bool", true))
-
-	// Commit invalid session.
-	assert.Error(t, st.Commit(randID), ErrInvalidSession)
-
-	// Commit valid session.
-	assert.NoError(t, st.Commit(id))
-
-	// Commit without setting.
-	assert.Error(t, st.Commit(id))
-	assert.Error(t, st.Commit(randID))
 
 	// Get different types.
 	v, err := st.Get(id, "num")
@@ -86,42 +103,91 @@ func TestSet(t *testing.T) {
 		v, err := st.Int(st.Get(id, "num"))
 		assert.NoError(t, err)
 		assert.Equal(t, v, int(123))
+
+		_, err = st.Int("xxx", nil)
+		assert.ErrorIs(t, err, ErrAssertType)
+
+		cErr := errors.New("type error")
+		_, err = st.Int("xxx", cErr)
+		assert.ErrorIs(t, err, cErr)
 	}
 
 	{
 		v, err := st.Int64(st.Get(id, "num"))
 		assert.NoError(t, err)
 		assert.Equal(t, v, int64(123))
+
+		_, err = st.Int64("xxx", nil)
+		assert.ErrorIs(t, err, ErrAssertType)
+
+		cErr := errors.New("type error")
+		_, err = st.Int64("xxx", cErr)
+		assert.ErrorIs(t, err, cErr)
 	}
 
 	{
 		v, err := st.UInt64(st.Get(id, "num"))
 		assert.NoError(t, err)
 		assert.Equal(t, v, uint64(123))
+
+		_, err = st.UInt64("xxx", nil)
+		assert.ErrorIs(t, err, ErrAssertType)
+
+		cErr := errors.New("type error")
+		_, err = st.UInt64("xxx", cErr)
+		assert.ErrorIs(t, err, cErr)
 	}
 
 	{
 		v, err := st.Float64(st.Get(id, "float"))
 		assert.NoError(t, err)
 		assert.Equal(t, v, float64(12.3))
+
+		_, err = st.Float64("xxx", nil)
+		assert.ErrorIs(t, err, ErrAssertType)
+
+		cErr := errors.New("type error")
+		_, err = st.Float64("xxx", cErr)
+		assert.ErrorIs(t, err, cErr)
 	}
 
 	{
 		v, err := st.String(st.Get(id, "str"))
 		assert.NoError(t, err)
 		assert.Equal(t, v, "hello 123")
+
+		_, err = st.String(1, nil)
+		assert.ErrorIs(t, err, ErrAssertType)
+
+		cErr := errors.New("type error")
+		_, err = st.String("xxx", cErr)
+		assert.ErrorIs(t, err, cErr)
 	}
 
 	{
 		v, err := st.Bytes(st.Get(id, "str"))
 		assert.NoError(t, err)
 		assert.Equal(t, v, []byte("hello 123"))
+
+		_, err = st.Bytes(1, nil)
+		assert.ErrorIs(t, err, ErrAssertType)
+
+		cErr := errors.New("type error")
+		_, err = st.Bytes("xxx", cErr)
+		assert.ErrorIs(t, err, cErr)
 	}
 
 	{
 		v, err := st.Bool(st.Get(id, "bool"))
 		assert.NoError(t, err)
 		assert.Equal(t, v, true)
+
+		_, err = st.Bool("xxx", nil)
+		assert.ErrorIs(t, err, ErrAssertType)
+
+		cErr := errors.New("type error")
+		_, err = st.Bool("xxx", cErr)
+		assert.ErrorIs(t, err, cErr)
 	}
 
 	{
@@ -137,8 +203,9 @@ func TestSet(t *testing.T) {
 	}
 
 	// Non-existent field.
-	_, err = st.Get(id, "xx")
-	assert.ErrorIs(t, err, ErrFieldNotFound)
+	v, err = st.Get(id, "xx")
+	assert.Nil(t, v)
+	assert.Nil(t, err)
 
 	// Get multiple.
 	mp, err := st.GetMulti(id, "num", "str", "bool")
@@ -149,39 +216,62 @@ func TestSet(t *testing.T) {
 		"bool": true,
 	})
 	mp, err = st.GetMulti(id, "num", "str", "bool", "blah")
-	assert.ErrorIs(t, err, ErrFieldNotFound)
+	assert.Nil(t, mp["blah"])
+	assert.Nil(t, err)
 
 	// Add another key in a different commit.
 	assert.NoError(t, st.Set(id, "num2", 456))
-	assert.NoError(t, st.Commit(id))
+
+	assert.NoError(t, st.SetMulti(id, map[string]interface{}{
+		"num10": 1,
+		"num11": 2,
+	}))
 
 	v, err = st.Get(id, "num2")
 	assert.NoError(t, err)
 	assert.Equal(t, v, float64(456))
 
+	v, err = st.Get(id, "num10")
+	assert.NoError(t, err)
+	assert.Equal(t, v, float64(1))
+
+	v, err = st.Get(id, "num11")
+	assert.NoError(t, err)
+	assert.Equal(t, v, float64(2))
+
 	// Delete.
 	assert.ErrorIs(t, st.Delete("blah", "num2"), ErrInvalidSession)
 	assert.NoError(t, st.Delete(id, "num2"))
 	v, err = st.Get(id, "num2")
+	assert.Nil(t, v)
+	assert.Nil(t, err)
 	v, err = st.Get(id, "num3")
-	assert.Error(t, ErrFieldNotFound)
+	assert.Nil(t, v)
+	assert.Nil(t, err)
 
 	// Clear.
-	assert.ErrorIs(t, st.Clear(randID), ErrInvalidSession)
+	assert.ErrorIs(t, st.Clear("unknow_id"), ErrInvalidSession)
 	assert.NoError(t, st.Clear(id))
 	v, err = st.Get(id, "str")
-	assert.Error(t, err, ErrFieldNotFound)
+	assert.Nil(t, v)
+	assert.Nil(t, err)
+
+	// Destroy.
+	assert.ErrorIs(t, st.Destroy("unknow_id"), ErrInvalidSession)
+	assert.NoError(t, st.Destroy(id))
+	_, err = st.Get(id, "str")
+	assert.ErrorIs(t, err, ErrInvalidSession)
 }
 
 func TestPrune(t *testing.T) {
+	id, _ := generateID()
+
 	// Create a new session.
-	id, err := st.Create()
+	err := st.Create(id)
 	assert.NoError(t, err)
-	assert.NotEmpty(t, id)
 
 	// Set value.
 	assert.NoError(t, st.Set(id, "str", "hello 123"))
-	assert.NoError(t, st.Commit(id))
 
 	// Get value and verify.
 	v, err := st.Get(id, "str")
@@ -197,10 +287,10 @@ func TestPrune(t *testing.T) {
 
 	// Create one more session and immediately run prune. Except for this,
 	// all previous sessions should be gone.
-	id, err = st.Create()
+	id, _ = generateID()
+	err = st.Create(id)
 	assert.NoError(t, err)
 	assert.NoError(t, st.Set(id, "str", "hello 123"))
-	assert.NoError(t, st.Commit(id))
 
 	// Run prune. All previously created sessions should be gone.
 	assert.NoError(t, st.Prune())
@@ -215,4 +305,13 @@ func TestPrune(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, v, "hello 123")
 
+}
+
+func TestError(t *testing.T) {
+	err := Err{
+		code: 1,
+		msg:  "test",
+	}
+	assert.Equal(t, 1, err.Code())
+	assert.Equal(t, "test", err.Error())
 }

@@ -5,19 +5,24 @@ import (
 	"net/http"
 
 	"github.com/valyala/fasthttp"
-	"github.com/vividvilla/simplesessions"
-	"github.com/vividvilla/simplesessions/stores/memory"
+	"github.com/vividvilla/simplesessions/stores/memory/v3"
+	"github.com/vividvilla/simplesessions/v3"
 )
 
 var (
-	sessionManager *simplesessions.Manager
+	sessMgr *simplesessions.Manager
 
 	testKey   = "abc123"
 	testValue = 123456
 )
 
 func setHandler(ctx *fasthttp.RequestCtx) {
-	sess, err := sessionManager.Acquire(ctx, ctx, nil)
+	sess, err := sessMgr.Acquire(nil, ctx, ctx)
+	// Create new session if it doesn't exist.
+	if err == simplesessions.ErrInvalidSession {
+		sess, err = sessMgr.NewSession(ctx, ctx)
+	}
+
 	if err != nil {
 		ctx.Error(err.Error(), 500)
 		return
@@ -29,16 +34,11 @@ func setHandler(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	if err = sess.Commit(); err != nil {
-		ctx.Error(err.Error(), 500)
-		return
-	}
-
 	fmt.Fprintf(ctx, "success")
 }
 
 func getHandler(ctx *fasthttp.RequestCtx) {
-	sess, err := sessionManager.Acquire(ctx, ctx, nil)
+	sess, err := sessMgr.Acquire(nil, ctx, ctx)
 	if err != nil {
 		ctx.Error(err.Error(), 500)
 		return
@@ -99,10 +99,9 @@ func setCookie(cookie *http.Cookie, w interface{}) error {
 }
 
 func main() {
-	sessionManager = simplesessions.New(simplesessions.Options{})
-	sessionManager.UseStore(memory.New())
-	sessionManager.RegisterGetCookie(getCookie)
-	sessionManager.RegisterSetCookie(setCookie)
+	sessMgr = simplesessions.New(simplesessions.Options{})
+	sessMgr.UseStore(memory.New())
+	sessMgr.SetCookieHooks(getCookie, setCookie)
 
 	m := func(ctx *fasthttp.RequestCtx) {
 		switch string(ctx.Path()) {

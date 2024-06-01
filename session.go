@@ -3,30 +3,27 @@ package simplesessions
 import (
 	"errors"
 	"net/http"
+	"sync"
 	"time"
 )
 
-// Session is utility for get, set or clear session.
+// Session represents a session object used for retrieving/setting session data and cookies.
 type Session struct {
-	// Map to store session data which can be loaded using `Load` method.
-	// Get session method check if the field is available here before getting from store directly.
-	values map[string]interface{}
+	// Map to store session data, loaded using `CacheAll` method.
+	// All `Get` methods tries to retrive cached value before fetching from the store.
+	// If its nil then cache is not set and `Get` methods directly fetch from the store.
+	cache    map[string]interface{}
+	cacheMux sync.RWMutex
 
 	// Session manager.
 	manager *Manager
 
-	// Current http cookie. This is passed down to `SetCookie` callback.
-	cookie *http.Cookie
+	// Session ID.
+	id string
 
-	// HTTP reader and writer interfaces which are passed on to
-	// `GetCookie`` and `SetCookie`` callback respectively.
+	// HTTP reader and writer interfaces which are passed on to `GetCookie`` and `SetCookie`` callbacks.
 	reader interface{}
 	writer interface{}
-
-	// Track if session is set in store or not
-	// used to throw and error is autoSet is not enabled and user
-	// explicitly didn't create new session in store.
-	isSet bool
 }
 
 var (
@@ -35,320 +32,289 @@ var (
 	// Store code = 1
 	ErrInvalidSession = errors.New("simplesession: invalid session")
 
-	// ErrFieldNotFound is raised when given key is not found in store
+	// ErrNil is raised when returned value is nil.
 	// Store code = 2
-	ErrFieldNotFound = errors.New("simplesession: session field not found in store")
+	ErrNil = errors.New("simplesession: nil returned")
 
 	// ErrAssertType is raised when type assertion fails
 	// Store code = 3
 	ErrAssertType = errors.New("simplesession: invalid type assertion")
-
-	// ErrNil is raised when returned value is nil.
-	// Store code = 4
-	ErrNil = errors.New("simplesession: nil returned")
 )
 
 type errCode interface {
 	Code() int
 }
 
-// NewSession creates a new session. Reads cookie info from `GetCookie“ callback
-// and validate the session with current store. If cookie not set then it creates
-// new session and calls `SetCookie“ callback. If `DisableAutoSet` is set then it
-// skips new session creation and should be manually done using `Create` method.
-// If a cookie is found but its invalid in store then `ErrInvalidSession` error is returned.
-func NewSession(m *Manager, r, w interface{}) (*Session, error) {
-	var (
-		err  error
-		sess = &Session{
-			manager: m,
-			reader:  r,
-			writer:  w,
-			values:  make(map[string]interface{}),
-		}
-	)
-
-	// Get existing http session cookie
-	sess.cookie, err = m.getCookieCb(m.opts.CookieName, r)
-
-	// Create new session
-	if err == http.ErrNoCookie {
-		// Skip creating new cookie in store. User has to manually create before doing Get or Set.
-		if m.opts.DisableAutoSet {
-			return sess, nil
-		}
-
-		// Create new cookie in store and write to front
-		// Store also calls `WriteCookie`` to write to http interface
-		cv, err := m.store.Create()
-		if err != nil {
-			return nil, errAs(err)
-		}
-
-		// Write cookie
-		if err := sess.WriteCookie(cv); err != nil {
-			return nil, err
-		}
-
-		// Set isSet flag
-		sess.isSet = true
-	} else if err != nil {
-		return nil, err
-	}
-
-	// Set isSet flag
-	sess.isSet = true
-
-	return sess, nil
-}
-
-// WriteCookie updates the cookie and calls `SetCookie` callback.
-// This method can also be used by store to update cookie whenever the cookie value changes.
-func (s *Session) WriteCookie(cv string) error {
-	s.cookie = &http.Cookie{
-		Value:    cv,
-		Name:     s.manager.opts.CookieName,
-		Domain:   s.manager.opts.CookieDomain,
-		Path:     s.manager.opts.CookiePath,
-		Secure:   s.manager.opts.IsSecureCookie,
-		HttpOnly: s.manager.opts.IsHTTPOnlyCookie,
-		SameSite: s.manager.opts.SameSite,
-	}
-
-	// Set cookie expiry
-	if s.manager.opts.CookieLifetime != 0 {
-		s.cookie.Expires = time.Now().Add(s.manager.opts.CookieLifetime)
+// WriteCookie writes the cookie for the given session ID.
+// Uses all the cookie options set in Manager.
+func (s *Session) WriteCookie(id string) error {
+	ck := &http.Cookie{
+		Value:    id,
+		Name:     s.manager.opts.Cookie.Name,
+		Domain:   s.manager.opts.Cookie.Domain,
+		Path:     s.manager.opts.Cookie.Path,
+		Secure:   s.manager.opts.Cookie.IsSecure,
+		HttpOnly: s.manager.opts.Cookie.IsHTTPOnly,
+		SameSite: s.manager.opts.Cookie.SameSite,
+		Expires:  s.manager.opts.Cookie.Expires,
+		MaxAge:   int(s.manager.opts.Cookie.MaxAge.Seconds()),
 	}
 
 	// Call `SetCookie` callback to write cookie to response
-	return s.manager.setCookieCb(s.cookie, s.writer)
+	return s.manager.setCookieHook(ck, s.writer)
 }
 
-// clearCookie sets expiry of the cookie to one day before to clear it.
-func (s *Session) clearCookie() error {
-	s.cookie = &http.Cookie{
-		Name:  s.manager.opts.CookieName,
+// ClearCookie sets the cookie's expiry to one day prior to clear it.
+func (s *Session) ClearCookie() error {
+	ck := &http.Cookie{
+		Name:  s.manager.opts.Cookie.Name,
 		Value: "",
 		// Set expiry to previous date to clear it from browser
 		Expires: time.Now().AddDate(0, 0, -1),
 	}
 
 	// Call `SetCookie` callback to write cookie to response
-	return s.manager.setCookieCb(s.cookie, s.writer)
-}
-
-// Create a new session. This is implicit when option `DisableAutoSet` is false
-// else session has to be manually created before setting or getting values.
-func (s *Session) Create() error {
-	// Create new cookie in store and write to front.
-	cv, err := s.manager.store.Create()
-	if err != nil {
-		return errAs(err)
-	}
-
-	// Write cookie
-	if err := s.WriteCookie(cv); err != nil {
-		return err
-	}
-
-	// Set isSet flag
-	s.isSet = true
-
-	return nil
+	return s.manager.setCookieHook(ck, s.writer)
 }
 
 // ID returns the acquired session ID. If cookie is not set then empty string is returned.
 func (s *Session) ID() string {
-	if s.cookie != nil {
-		return s.cookie.Value
+	return s.id
+}
+
+// getCacheAll returns a copy of cached map.
+func (s *Session) getCacheAll() map[string]interface{} {
+	s.cacheMux.RLock()
+	defer s.cacheMux.RUnlock()
+
+	if s.cache == nil {
+		return nil
 	}
-	return ""
+
+	out := map[string]interface{}{}
+	for k, v := range s.cache {
+		out[k] = v
+	}
+
+	return out
 }
 
-// LoadValues loads the session values in memory.
-// Get session field tries to get value from memory before hitting store.
-func (s *Session) LoadValues() error {
-	var err error
-	s.values, err = s.GetAll()
-	return err
+// getCacheAll returns a map of values for the given list of keys.
+// If key doesn't exist then Nil is returned.
+func (s *Session) getCache(key ...string) map[string]interface{} {
+	s.cacheMux.RLock()
+	defer s.cacheMux.RUnlock()
+
+	if s.cache == nil {
+		return nil
+	}
+
+	out := map[string]interface{}{}
+	for _, k := range key {
+		v, ok := s.cache[k]
+		if ok {
+			out[k] = v
+		} else {
+			out[k] = nil
+		}
+	}
+
+	return out
 }
 
-// ResetValues reset the loaded values using `LoadValues` method.ResetValues
-// Subsequent Get, GetAll and GetMulti
-func (s *Session) ResetValues() {
-	s.values = make(map[string]interface{})
+// setCache sets a cache for given kv pairs.
+func (s *Session) setCache(data map[string]interface{}) {
+	s.cacheMux.Lock()
+	defer s.cacheMux.Unlock()
+
+	// If cacheAll() is not called the don't maintain cache.
+	if s.cache == nil {
+		return
+	}
+
+	for k, v := range data {
+		s.cache[k] = v
+	}
 }
 
-// GetAll gets all the fields in the session.
+// deleteCache sets a cache for given kv pairs.
+func (s *Session) deleteCache(key ...string) {
+	s.cacheMux.Lock()
+	defer s.cacheMux.Unlock()
+
+	// If cacheAll() is not called the don't maintain cache.
+	if s.cache == nil {
+		return
+	}
+
+	for _, k := range key {
+		delete(s.cache, k)
+	}
+}
+
+// CacheAll loads session values into memory for quick access.
+// Ideal for centralized session fetching, e.g., in middleware.
+// Subsequent Get/GetMulti calls return cached values, avoiding store access.
+// Use ResetCache() to ensure GetAll/Get/GetMulti fetches from the store.
+func (s *Session) CacheAll() error {
+	all, err := s.manager.store.GetAll(s.id)
+	if err != nil {
+		return err
+	}
+
+	s.cacheMux.Lock()
+	defer s.cacheMux.Unlock()
+	s.cache = map[string]interface{}{}
+	for k, v := range all {
+		s.cache[k] = v
+	}
+
+	return nil
+}
+
+// ResetCache clears loaded values, ensuring subsequent Get, GetAll, and GetMulti calls fetch from the store.
+func (s *Session) ResetCache() {
+	s.cacheMux.Lock()
+	defer s.cacheMux.Unlock()
+	s.cache = nil
+}
+
+// GetAll gets all the fields for the given session id.
 func (s *Session) GetAll() (map[string]interface{}, error) {
-	// Check if session is set before accessing it
-	if !s.isSet {
-		return nil, ErrInvalidSession
+	// Try to get the values from cache.
+	c := s.getCacheAll()
+	if c != nil {
+		return c, nil
 	}
 
-	// Load value from map if its already loaded
-	if len(s.values) > 0 {
-		return s.values, nil
-	}
-
-	out, err := s.manager.store.GetAll(s.cookie.Value)
+	// Get the values from store.
+	out, err := s.manager.store.GetAll(s.id)
 	return out, errAs(err)
 }
 
-// GetMulti gets a map of values for multiple session keys.
-func (s *Session) GetMulti(keys ...string) (map[string]interface{}, error) {
-	// Check if session is set before accessing it
-	if !s.isSet {
-		return nil, ErrInvalidSession
+// GetMulti retrieves values for multiple session fields.
+// If a field is not found in the store then its returned as nil.
+func (s *Session) GetMulti(key ...string) (map[string]interface{}, error) {
+	// Try to get the values from cache.
+	c := s.getCache(key...)
+	if c != nil {
+		return c, nil
 	}
 
-	// Load values from map if its already loaded
-	if len(s.values) > 0 {
-		vals := make(map[string]interface{})
-		for _, k := range keys {
-			if v, ok := s.values[k]; ok {
-				vals[k] = v
-			}
-		}
-
-		return vals, nil
-	}
-
-	out, err := s.manager.store.GetMulti(s.cookie.Value, keys...)
+	out, err := s.manager.store.GetMulti(s.id, key...)
 	return out, errAs(err)
 }
 
-// Get gets a value for given key in session.
-// If session is already loaded using `Load` then returns values from
-// existing map instead of getting it from store.
+// Get retrieves a value for the given key in the session.
+// If the session is already loaded, it returns the value from the existing map.
+// Otherwise, it fetches the value from the store.
 func (s *Session) Get(key string) (interface{}, error) {
-	// Check if session is set before accessing it
-	if !s.isSet {
-		return nil, ErrInvalidSession
+	// Try to get the values from cache.
+	// If cache is set then get only from cache.
+	c := s.getCache(key)
+	if c != nil {
+		return c[key], nil
 	}
 
-	// Load value from map if its already loaded
-	if len(s.values) > 0 {
-		if val, ok := s.values[key]; ok {
-			return val, nil
-		}
-	}
-
-	// Get from backend if not found in previous step
-	out, err := s.manager.store.Get(s.cookie.Value, key)
+	// Fetch from store if not found in the map.
+	out, err := s.manager.store.Get(s.id, key)
 	return out, errAs(err)
 }
 
-// Set sets a value for given key in session. Its up to store to commit
-// all previously set values at once or store it on each set.
+// Set assigns a value to the given key in the session.
 func (s *Session) Set(key string, val interface{}) error {
-	// Check if session is set before accessing it
-	if !s.isSet {
-		return ErrInvalidSession
+	err := s.manager.store.Set(s.id, key, val)
+	if err == nil {
+		s.setCache(map[string]interface{}{
+			key: val,
+		})
 	}
-
-	err := s.manager.store.Set(s.cookie.Value, key, val)
 	return errAs(err)
 }
 
-// SetMulti sets all values in the session.
-// Its up to store to commit all previously
-// set values at once or store it on each set.
-func (s *Session) SetMulti(values map[string]interface{}) error {
-	// Check if session is set before accessing it
-	if !s.isSet {
-		return ErrInvalidSession
+// SetMulti assigns multiple values to the session.
+func (s *Session) SetMulti(data map[string]interface{}) error {
+	err := s.manager.store.SetMulti(s.id, data)
+	if err == nil {
+		s.setCache(data)
 	}
-
-	for k, v := range values {
-		if err := s.manager.store.Set(s.cookie.Value, k, v); err != nil {
-			return errAs(err)
-		}
-	}
-
-	return nil
+	return errAs(err)
 }
 
-// Commit commits all set to store. Its up to store to commit
-// all previously set values at once or store it on each set.
-func (s *Session) Commit() error {
-	// Check if session is set before accessing it
-	if !s.isSet {
-		return ErrInvalidSession
+// Delete deletes a given list of fields from the session.
+func (s *Session) Delete(key ...string) error {
+	err := s.manager.store.Delete(s.id, key...)
+	if err == nil {
+		s.deleteCache(key...)
 	}
-
-	if err := s.manager.store.Commit(s.cookie.Value); err != nil {
-		return errAs(err)
-	}
-
-	return nil
+	return errAs(err)
 }
 
-// Delete deletes a field from session.
-func (s *Session) Delete(key string) error {
-	// Check if session is set before accessing it
-	if !s.isSet {
-		return ErrInvalidSession
-	}
-
-	if err := s.manager.store.Delete(s.cookie.Value, key); err != nil {
-		return errAs(err)
-	}
-
-	return nil
-}
-
-// Clear clears session data from store and clears the cookie
+// Clear empties the data for the given session id but doesn't clear the cookie.
+// Use `Destroy()` to delete entire session from the store and clear the cookie.
 func (s *Session) Clear() error {
-	// Check if session is set before accessing it
-	if !s.isSet {
-		return ErrInvalidSession
-	}
-
-	if err := s.manager.store.Clear(s.cookie.Value); err != nil {
+	err := s.manager.store.Clear(s.id)
+	if err != nil {
 		return errAs(err)
 	}
-
-	return s.clearCookie()
+	s.ResetCache()
+	return nil
 }
 
-// Int is a helper to get values as integer
+// Destroy deletes the session from backend and clears the cookie.
+func (s *Session) Destroy() error {
+	err := s.manager.store.Destroy(s.id)
+	if err != nil {
+		return errAs(err)
+	}
+	s.ResetCache()
+	return s.ClearCookie()
+}
+
+// Int is a helper to get values as integer.
+// If the value is Nil, ErrNil is returned, which means key doesn't exist.
 func (s *Session) Int(r interface{}, err error) (int, error) {
 	out, err := s.manager.store.Int(r, err)
 	return out, errAs(err)
 }
 
-// Int64 is a helper to get values as Int64
+// Int64 is a helper to get values as Int64.
+// If the value is Nil, ErrNil is returned, which means key doesn't exist.
 func (s *Session) Int64(r interface{}, err error) (int64, error) {
 	out, err := s.manager.store.Int64(r, err)
 	return out, errAs(err)
 }
 
-// UInt64 is a helper to get values as UInt64
+// UInt64 is a helper to get values as UInt64.
+// If the value is Nil, ErrNil is returned, which means key doesn't exist.
 func (s *Session) UInt64(r interface{}, err error) (uint64, error) {
 	out, err := s.manager.store.UInt64(r, err)
 	return out, errAs(err)
 }
 
-// Float64 is a helper to get values as Float64
+// Float64 is a helper to get values as Float64.
+// If the value is Nil, ErrNil is returned, which means key doesn't exist.
 func (s *Session) Float64(r interface{}, err error) (float64, error) {
 	out, err := s.manager.store.Float64(r, err)
 	return out, errAs(err)
 }
 
-// String is a helper to get values as String
+// String is a helper to get values as String.
+// If the value is Nil, ErrNil is returned, which means key doesn't exist.
 func (s *Session) String(r interface{}, err error) (string, error) {
 	out, err := s.manager.store.String(r, err)
 	return out, errAs(err)
 }
 
-// Bytes is a helper to get values as Bytes
+// Bytes is a helper to get values as Bytes.
+// If the value is Nil, ErrNil is returned, which means key doesn't exist.
 func (s *Session) Bytes(r interface{}, err error) ([]byte, error) {
 	out, err := s.manager.store.Bytes(r, err)
 	return out, errAs(err)
 }
 
-// Bool is a helper to get values as Bool
+// Bool is a helper to get values as Bool.
+// If the value is Nil, ErrNil is returned, which means key doesn't exist.
 func (s *Session) Bool(r interface{}, err error) (bool, error) {
 	out, err := s.manager.store.Bool(r, err)
 	return out, errAs(err)
@@ -370,11 +336,9 @@ func errAs(err error) error {
 	case 1:
 		return ErrInvalidSession
 	case 2:
-		return ErrFieldNotFound
+		return ErrNil
 	case 3:
 		return ErrAssertType
-	case 4:
-		return ErrNil
 	}
 
 	return err

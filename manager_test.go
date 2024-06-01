@@ -2,6 +2,7 @@ package simplesessions
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"testing"
 	"time"
@@ -9,167 +10,217 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+const mockSessionID = "sometestcookievalue"
+
+func newMockStore() *MockStore {
+	return &MockStore{
+		id:   mockSessionID,
+		data: map[string]interface{}{},
+		err:  nil,
+	}
+}
+
+func newMockManager(store *MockStore) *Manager {
+	m := New(Options{})
+	m.UseStore(store)
+	m.SetCookieHooks(mockGetCookieCb, mockSetCookieCb)
+	return m
+}
+
+func mockGetCookieCb(name string, r interface{}) (*http.Cookie, error) {
+	return &http.Cookie{
+		Name:  name,
+		Value: mockSessionID,
+	}, nil
+}
+
+func mockSetCookieCb(*http.Cookie, interface{}) error {
+	return nil
+}
+
 func TestNewManagerWithDefaultOptions(t *testing.T) {
 	m := New(Options{})
-
-	assert := assert.New(t)
 	// Default cookie path is set to root
-	assert.Equal(m.opts.CookiePath, "/")
+	assert.Equal(t, "/", m.opts.Cookie.Path)
 	// Default cookie name is set
-	assert.Equal(m.opts.CookieName, defaultCookieName)
+	assert.Equal(t, defaultCookieName, m.opts.Cookie.Name)
 }
 
 func TestManagerNewManagerWithOptions(t *testing.T) {
 	opts := Options{
-		DisableAutoSet:   true,
-		CookieName:       "testcookiename",
-		CookieDomain:     "somedomain",
-		CookiePath:       "/abc/123",
-		IsSecureCookie:   true,
-		IsHTTPOnlyCookie: true,
-		SameSite:         http.SameSiteLaxMode,
-		CookieLifetime:   2000 * time.Millisecond,
+		EnableAutoCreate: true,
+		SessionIDLength:  16,
+		Cookie: CookieOptions{
+			Name:       "testcookiename",
+			Domain:     "somedomain",
+			Path:       "/abc/123",
+			IsSecure:   true,
+			IsHTTPOnly: true,
+			SameSite:   http.SameSiteLaxMode,
+			MaxAge:     time.Hour * 1,
+			Expires:    time.Now(),
+		},
 	}
 
 	m := New(opts)
+	assert.Equal(t, opts.EnableAutoCreate, m.opts.EnableAutoCreate)
+	assert.Equal(t, opts.SessionIDLength, m.opts.SessionIDLength)
+	assert.Equal(t, opts.Cookie.Name, m.opts.Cookie.Name)
+	assert.Equal(t, opts.Cookie.Domain, m.opts.Cookie.Domain)
+	assert.Equal(t, opts.Cookie.Path, m.opts.Cookie.Path)
+	assert.Equal(t, opts.Cookie.IsSecure, m.opts.Cookie.IsSecure)
+	assert.Equal(t, opts.Cookie.SameSite, m.opts.Cookie.SameSite)
+	assert.Equal(t, opts.Cookie.IsHTTPOnly, m.opts.Cookie.IsHTTPOnly)
+	assert.Equal(t, opts.Cookie.MaxAge, m.opts.Cookie.MaxAge)
+	assert.Equal(t, opts.Cookie.Expires, m.opts.Cookie.Expires)
 
-	assert := assert.New(t)
+	// Default opts.
+	m = New(Options{})
+	assert.NotNil(t, m.generateID)
+	assert.NotNil(t, m.validateID)
 
-	// Default cookie path is set to root
-	assert.Equal(m.opts.DisableAutoSet, opts.DisableAutoSet)
-	assert.Equal(m.opts.CookieName, opts.CookieName)
-	assert.Equal(m.opts.CookieDomain, opts.CookieDomain)
-	assert.Equal(m.opts.CookiePath, opts.CookiePath)
-	assert.Equal(m.opts.IsSecureCookie, opts.IsSecureCookie)
-	assert.Equal(m.opts.SameSite, opts.SameSite)
-	assert.Equal(m.opts.IsHTTPOnlyCookie, opts.IsHTTPOnlyCookie)
-	assert.Equal(m.opts.CookieLifetime, opts.CookieLifetime)
+	assert.Equal(t, false, m.opts.EnableAutoCreate)
+	assert.Equal(t, defaultSessIDLength, m.opts.SessionIDLength)
+	assert.Equal(t, defaultCookieName, m.opts.Cookie.Name)
+	assert.Equal(t, defaultCookiePath, m.opts.Cookie.Path)
 }
 
 func TestManagerUseStore(t *testing.T) {
-	assert := assert.New(t)
-	mockStr := &MockStore{}
-	assert.Implements((*Store)(nil), mockStr)
-
-	m := New(Options{})
-	m.UseStore(mockStr)
-	assert.Equal(m.store, mockStr)
+	s := newMockStore()
+	m := newMockManager(s)
+	assert.Equal(t, s, m.store)
 }
 
-func TestManagerRegisterGetCookie(t *testing.T) {
-	assert := assert.New(t)
-	m := New(Options{})
-
-	testCookie := &http.Cookie{
+func TestManagerSetCookieHooks(t *testing.T) {
+	ck := &http.Cookie{
 		Name: "testcookie",
 	}
 
-	cb := func(string, interface{}) (*http.Cookie, error) {
-		return testCookie, http.ErrNoCookie
+	get := func(string, interface{}) (*http.Cookie, error) {
+		return ck, http.ErrNoCookie
 	}
-
-	m.RegisterGetCookie(cb)
-
-	expectCbRes, expectCbErr := cb("", nil)
-	actualCbRes, actualCbErr := m.getCookieCb("", nil)
-
-	assert.Equal(expectCbRes, actualCbRes)
-	assert.Equal(expectCbErr, actualCbErr)
-}
-
-func TestManagerRegisterSetCookie(t *testing.T) {
-	assert := assert.New(t)
-	m := New(Options{})
-
-	testCookie := &http.Cookie{
-		Name: "testcookie",
-	}
-
-	cb := func(*http.Cookie, interface{}) error {
+	set := func(*http.Cookie, interface{}) error {
 		return http.ErrNoCookie
 	}
 
-	m.RegisterSetCookie(cb)
+	m := New(Options{})
+	m.SetCookieHooks(get, set)
 
-	expectCbErr := cb(testCookie, nil)
-	actualCbErr := m.setCookieCb(testCookie, nil)
+	expRes, expErr := get("", nil)
+	gotRes, gotErr := m.getCookieHook("", nil)
+	assert.Equal(t, expRes, gotRes)
+	assert.Equal(t, expErr, gotErr)
 
-	assert.Equal(expectCbErr, actualCbErr)
+	expErr = set(ck, nil)
+	gotErr = m.setCookieHook(ck, nil)
+	assert.Equal(t, expErr, gotErr)
 }
 
 func TestManagerAcquireFails(t *testing.T) {
-	assert := assert.New(t)
 	m := New(Options{})
 
-	_, err := m.Acquire(nil, nil, nil)
-	assert.Error(err, "session store is not set")
+	// Fail if store is not assigned.
+	_, err := m.Acquire(context.Background(), nil, nil)
+	assert.Equal(t, "session store not set", err.Error())
 
+	// Fail if getCookie callback is not assigned.
 	m.UseStore(&MockStore{})
-	_, err = m.Acquire(nil, nil, nil)
-	assert.Error(err, "callback `GetCookie` not set")
+	_, err = m.Acquire(context.Background(), nil, nil)
+	assert.Equal(t, "`GetCookie` hook not set", err.Error())
 
-	getCb := func(string, interface{}) (*http.Cookie, error) {
-		return nil, nil
-	}
-	m.RegisterGetCookie(getCb)
-	_, err = m.Acquire(nil, nil, nil)
-	assert.Error(err, "callback `SetCookie` not set")
+	// Assign getCookie, returns nil cookie to make sure it
+	// fails in create session with invalid session.
+	m.SetCookieHooks(func(string, interface{}) (*http.Cookie, error) { return nil, nil }, nil)
+
+	// Fail if setCookie callback is not assigned.
+	_, err = m.Acquire(context.Background(), nil, nil)
+	assert.Equal(t, "`SetCookie` hook not set", err.Error())
+
+	// Register setCookie callback.
+	m.SetCookieHooks(func(string, interface{}) (*http.Cookie, error) { return nil, nil },
+		func(*http.Cookie, interface{}) error { return nil })
+
+	// By default EnableAutoCreate is disabled
+	// Check if it returns invalid session.
+	_, err = m.Acquire(context.Background(), nil, nil)
+	assert.ErrorIs(t, err, ErrInvalidSession)
 }
 
-func TestManagerAcquireSucceeds(t *testing.T) {
-	m := New(Options{})
-	m.UseStore(&MockStore{
-		isValid: true,
-	})
+func TestManagerAcquireAutocreate(t *testing.T) {
+	m := newMockManager(newMockStore())
+	// Enable autocreate.
+	m.opts.EnableAutoCreate = true
+	m.SetCookieHooks(func(string, interface{}) (*http.Cookie, error) { return nil, ErrInvalidSession },
+		func(*http.Cookie, interface{}) error { return nil })
 
-	getCb := func(string, interface{}) (*http.Cookie, error) {
-		return &http.Cookie{
-			Name:  "testcookie",
-			Value: "",
-		}, nil
-	}
-	m.RegisterGetCookie(getCb)
-
-	setCb := func(*http.Cookie, interface{}) error {
-		return http.ErrNoCookie
-	}
-	m.RegisterSetCookie(setCb)
-
-	_, err := m.Acquire(nil, nil, nil)
-	assert := assert.New(t)
-	assert.NoError(err)
+	// If cookie doesn't exist then should return a new one without error.
+	sess, err := m.Acquire(context.Background(), nil, nil)
+	assert.NoError(t, err)
+	assert.True(t, m.validateID(sess.id))
 }
 
 func TestManagerAcquireFromContext(t *testing.T) {
 	assert := assert.New(t)
+	m := newMockManager(newMockStore())
+
+	sess, err := m.Acquire(context.Background(), nil, nil)
+	sess.id = "updated"
+	assert.NoError(err)
+
+	ctx := context.WithValue(context.Background(), ContextName, sess)
+	sessNext, err := m.Acquire(ctx, nil, nil)
+	assert.Equal(sess.id, sessNext.id)
+	assert.NoError(err)
+}
+
+func TestDefaultGenerateID(t *testing.T) {
 	m := New(Options{})
-	m.UseStore(&MockStore{
-		isValid: true,
+	id, err := m.generateID()
+	assert.NoError(t, err)
+	assert.Equal(t, defaultSessIDLength, len(id))
+
+	m = New(Options{
+		SessionIDLength: 16,
 	})
+	id, err = m.generateID()
+	assert.NoError(t, err)
+	assert.Equal(t, 16, len(id))
+}
 
-	getCb := func(string, interface{}) (*http.Cookie, error) {
-		return &http.Cookie{
-			Name:  "testcookie",
-			Value: "",
-		}, nil
+func TestDefaultValidateID(t *testing.T) {
+	m := New(Options{})
+	id, err := m.generateID()
+	assert.NoError(t, err)
+	assert.True(t, m.validateID(id))
+	assert.False(t, m.validateID("xxxx"))
+	assert.False(t, m.validateID("11IHy6S2uBuKaNnTUszB218L898ikGY*"))
+}
+
+func TestSetSessionIDHooks(t *testing.T) {
+	var (
+		m            = New(Options{})
+		genErr error = nil
+		genID        = "xxx"
+		valOut       = true
+	)
+	gen := func() (string, error) {
+		return genID, genErr
 	}
-	m.RegisterGetCookie(getCb)
-
-	setCb := func(*http.Cookie, interface{}) error {
-		return http.ErrNoCookie
+	validate := func(string) bool {
+		return valOut
 	}
-	m.RegisterSetCookie(setCb)
+	m.SetSessionIDHooks(gen, validate)
 
-	sess, err := m.Acquire(nil, nil, nil)
-	assert.NoError(err)
-	sess.cookie.Value = "updated"
+	id, err := m.generateID()
+	eID, eErr := gen()
+	assert.Equal(t, eID, id)
+	assert.Equal(t, eErr, err)
 
-	sessNew, err := m.Acquire(nil, nil, nil)
-	assert.NoError(err)
-	assert.NotEqual(sessNew.cookie.Value, sess.cookie.Value)
+	genErr = fmt.Errorf("custom error")
+	_, err = m.generateID()
+	assert.ErrorIs(t, genErr, err)
 
-	ctx := context.Background()
-	ctx = context.WithValue(ctx, ContextName, sess)
-	sessNext, err := m.Acquire(nil, nil, ctx)
-	assert.Equal(sessNext.cookie.Value, sess.cookie.Value)
+	assert.True(t, m.validateID(genID))
+	valOut = false
+	assert.False(t, m.validateID(genID))
 }

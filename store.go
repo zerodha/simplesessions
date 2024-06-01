@@ -3,32 +3,41 @@ package simplesessions
 // Store represents store interface. This interface can be
 // implemented to create various backend stores for session.
 type Store interface {
-	// Create creates new session in store and returns the cookie value.
-	Create() (cookieValue string, err error)
+	// Create creates new session in the store for the given session ID.
+	Create(id string) (err error)
 
-	// Get gets a value for given key from session.
-	Get(cookieValue, key string) (value interface{}, err error)
+	// Get a value for the given key from session.
+	Get(id, key string) (value interface{}, err error)
 
-	// GetMulti gets a maps of multiple values for given keys.
-	GetMulti(cookieValue string, keys ...string) (values map[string]interface{}, err error)
+	// GetMulti gets a maps of multiple values for given keys from session.
+	// If some fields are not found then return nil for that field.
+	GetMulti(id string, keys ...string) (data map[string]interface{}, err error)
 
-	// GetAll gets all key and value from session,
-	GetAll(cookieValue string) (values map[string]interface{}, err error)
+	// GetAll gets all key and value from session.
+	GetAll(id string) (data map[string]interface{}, err error)
 
 	// Set sets an value for a field in session.
-	// Its up to store to either store it in session right after set or after commit.
-	Set(cookieValue, key string, value interface{}) error
+	Set(id, key string, value interface{}) error
 
-	// Commit commits all the previously set values to store.
-	Commit(cookieValue string) error
+	// Set takes a map of kv pair and set the field in store.
+	SetMulti(id string, data map[string]interface{}) error
 
-	// Delete a field from session.
-	Delete(cookieValue string, key string) error
+	// Delete a given list of keys from session.
+	Delete(id string, key ...string) error
 
-	// Clear clears the session key from backend if exists.
-	Clear(cookieValue string) error
+	// Clear empties the session but doesn't delete it.
+	Clear(id string) error
+
+	// Destroy deletes the entire session.
+	Destroy(id string) error
 
 	// Helper method for typecasting/asserting.
+	// Supposed to be used as a chain.
+	// For example: sess.Int(sess.Get("id", "key"))
+	// Take `error` and returns that if its not nil.
+	// Take `interface{}` value and type assert or convert.
+	// If its nil then return ErrNil.
+	// If it can't type asserted/converted then return ErrAssertType.
 	Int(interface{}, error) (int, error)
 	Int64(interface{}, error) (int64, error)
 	UInt64(interface{}, error) (uint64, error)
