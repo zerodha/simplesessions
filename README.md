@@ -19,8 +19,8 @@ Install `simplesessions` and all [available stores](/stores).
 go get -u github.com/zerodha/simplesessions/v3
 
 # Install the requrired store: memory|redis|postgres|securecookie
-go get -u github.com/zerodha/simplesessions/v3/stores/redis
-go get -u github.com/zerodha/simplesessions/v3/stores/postgres
+go get -u github.com/zerodha/simplesessions/stores/redis/v3
+go get -u github.com/zerodha/simplesessions/stores/postgres/v3
 ```
 
 # Stores
