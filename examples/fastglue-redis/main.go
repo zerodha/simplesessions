@@ -74,6 +74,19 @@ func getHandler(r *fastglue.Request) error {
 	return r.SendEnvelope(val == testValue)
 }
 
+func destroyHandler(r *fastglue.Request) error {
+	sess, err := sessMgr.Acquire(nil, r.RequestCtx, r.RequestCtx)
+	if err != nil {
+		return r.SendErrorEnvelope(fasthttp.StatusInternalServerError, err.Error(), nil, GeneralError)
+	}
+	err = sess.Destroy()
+	if err != nil {
+		return r.SendErrorEnvelope(fasthttp.StatusInternalServerError, err.Error(), nil, GeneralError)
+	}
+
+	return r.SendEnvelope(true)
+}
+
 // getCookie() gets the fasthttp cookie and passes its values to a http.Cookie
 func getCookie(name string, r interface{}) (*http.Cookie, error) {
 	ctx := r.(*fasthttp.RequestCtx)
@@ -134,6 +147,7 @@ func main() {
 	g := fastglue.New()
 	g.GET("/get", getHandler)
 	g.GET("/set", setHandler)
+	g.GET("/destroy", destroyHandler)
 
 	// 5s read/write timeout
 	server := initServer("go-redis", 5)
